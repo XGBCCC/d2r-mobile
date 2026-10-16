@@ -89,8 +89,9 @@ Also, besides diagnostics, `diag.c` holds the entry hook of every server tick: w
 
 | File | What it does |
 |---|---|
-| `dm_potpick.c` | Picks up matching potions automatically when the belt is not full |
-| `dm_beltauto.c` | Refills the belt with potions when the inventory is opened |
+| `dm_qol.c` | Refills the belt with this difficulty's best healing and mana; on Hell, full rejuvenation is refilled in town. Sorts once and retries a pickup that does not fit. Opening a vendor sells junk and then repairs |
+| `dm_potpick.c` | Picks up nearby gold piles automatically (potions on the ground are no longer picked up) |
+| `dm_beltauto.c` | Refills the belt from the inventory when it is opened, only while the switch above is off |
 | `dm_dropfilter.c` | The light beam and landing sound for high-value drops |
 | `dm_drophaptic.c` | Haptic feedback when a high-value item lands, in three strengths |
 | `dm_freetp.c` | Free town portal: reuses the original town portal skill directly |

@@ -116,7 +116,7 @@ Enter through the red portal in Harrogath after completing Hell. There are 100 l
 ### Endgame Boss Rush, Elysium mode, and the Kill Board
 
 - **Endgame Boss Rush**: unlocks after completing Hell, with 12 stages; stage 11 is Diablo Clone, and stage 12 is the three Uber bosses.
-- **Elysium mode** (chosen at character creation): Unique ×5, Set ×3, Runes ×5; the "no drop" chance is cut to a tenth, and bosses always drop as on a first kill.
+- **Elysium mode** (chosen at character creation): Unique ×8, Set ×5, Runes ×12; the "no drop" chance is cut to a tenth, and bosses always drop as on a first kill.
 - **Kill Board**: for every boss, the number of kills, the time of the first kill, how many Unique and Set items it has dropped, and your best and average kill times.
 
 <p align="center">
@@ -141,13 +141,13 @@ Enter through the red portal in Harrogath after completing Hell. There are 100 l
 | | |
 |---|---|
 | Auto-recast buffs | Buff skills you have learned do not need a slot on the skill bar: when a buff runs out, it is recast the moment you stand still; buffs that come from your secondary weapons (such as Battle Orders from Call to Arms) swap weapons, recast and swap back on their own |
-| Potions and belt | Auto-drink has two tiers: a healing potion below 50% Life, a rejuvenation potion below 30%; **your mercenary is fed automatically by the same rule**. Potions on the ground are picked up automatically when the belt has room; double-tap an empty belt slot to refill the whole belt |
-| Loot filter | From Nightmare on, the original loot filter is switched on automatically to hide clutter: light filtering in Nightmare, heavy in Hell |
-| Auto-pickup | Low runes and gems go straight into the Pouch; the high ones are left for you to pick up yourself |
+| Potions and belt | Auto-drink has two tiers: a healing potion below 50% Life, a rejuvenation potion below 30%; **your mercenary is fed automatically by the same rule**. Healing and mana stay at the best tier this difficulty's vendors sell, and refill as soon as one is drunk; on Hell one column is full rejuvenation, refilled when you trade in town. Red, blue and purple potions on the ground are not picked up. Double-tap an empty belt slot still refills from the inventory |
+| Loot filter | From Normal on, the original loot filter is switched on automatically: light filtering on Normal and Nightmare, heavy on Hell. Healing, mana and rejuvenation potions on the ground are hidden |
+| Auto-pickup | Low runes and gems go straight into the Pouch; the high ones are left for you to pick up yourself. Gold piles nearby are picked up automatically |
 | Valuable drop alerts | High runes and Unique items raise a light beam and land with a different drop sound; the phone vibrates at one of three strengths — light, medium or heavy — according to value |
 | Runeword helper | Long-press a socketed base to list the Runewords it can make and their stats; once you have the runes, socket them all in one tap |
 | Minimap guidance | Every map marks its Waypoint and exits; every quest goal is on the map; when a target is off screen, its name is written along the screen edge |
-| Chores removed | Free identification, free Town Portal with no scrolls needed, spawning right beside the Waypoint, Quick Restart, refreshable vendor stock |
+| Chores removed | Free identification, free Town Portal with no scrolls needed, spawning right beside the Waypoint, Quick Restart, refreshable vendor stock. Opening a vendor sells white, low-quality, superior and magic gear, and a vendor that repairs then repairs; a pickup that does not fit sorts the inventory once and tries again |
 | Saves | Saved immediately when you switch apps, swipe the app away or quit; iCloud sync across devices (requires signing with a paid developer account) |
 
 Most features can be toggled one by one in game under Options → Custom.

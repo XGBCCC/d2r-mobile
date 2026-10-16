@@ -41,6 +41,7 @@ SRC=\
 	dm_padmode.c \
 	dm_pages.c \
 	dm_potpick.c \
+	dm_qol.c \
 	dm_pouch.c \
 	dm_cloudmerge.c \
 	dm_rift.c \

@@ -988,6 +988,7 @@ static void hud_tick(uint64_t G) {        // 每拍：受控玩家等级 / 本�
     { void dm_vault_tick(uint64_t, uint64_t, uint8_t *); if (main) DM_PROF(1, "s.vault", dm_vault_tick(G, player, (uint8_t *)main->base)); }
     { void dm_autobuff_srv_tick(uint8_t *, uint64_t, uint64_t); if (main && player) DM_PROF(1, "s.autobuff", dm_autobuff_srv_tick((uint8_t *)main->base, G, player)); }   // 增益技能自动补：放主线程点名的技能 | Buff auto-recast: cast the skill named by the main thread
     { void dm_pouch_srv_tick(uint8_t *, uint64_t, uint64_t); if (main) DM_PROF(1, "s.pouch", dm_pouch_srv_tick((uint8_t *)main->base, G, player)); }
+    { void dm_qol_tick(uint8_t *, uint64_t, uint64_t); if (main && player) DM_PROF(1, "s.qol", dm_qol_tick((uint8_t *)main->base, G, player)); }   // 腰带按难度补药（dm_qol.c） | belt refill by difficulty (dm_qol.c)
     { void dm_cloudmerge_srv_tick(uint8_t *, uint64_t, uint64_t); if (main) DM_PROF(1, "s.cloudmerge", dm_cloudmerge_srv_tick((uint8_t *)main->base, G, player)); }   // iCloud 收件箱局内并回（dm_cloudmerge.c）；不在局内 player 为 0   // 百宝囊收 / 放、存放的系统提示（dm_pouch.c）；不在局内 player 为 0   // 编年史仓库存取（dm_vault.c）；同上 | iCloud inbox in-game merge (dm_cloudmerge.c); player is 0 when not in game   // System notices for pouch take / put and deposit (dm_pouch.c); player is 0 when not in game   // Chronicle stash take / store (dm_vault.c); same as above
     if (main && player) DM_PROF(1, "s.kills", dm_kills_tick(G, player, (uint8_t *)main->base)); dm_ipf_frame(1);   // 刷怪积分牌（dm_kills.c）：在首领连战之后，连战本关的首领它已记好 id | Kill board (dm_kills.c): runs after boss rush, which has already recorded the id of the boss of the current boss rush stage
     cube_diag_tick(G, player);   // 合成读数 | Transmute readout
@@ -1281,6 +1282,7 @@ static int cube_pickup_rewrite(const uint64_t *regs, uint8_t out[4 + 25]) {
         if (!tk_rd(u + 0x158, &u, 8)) return 0;
     }
     uint32_t mode = 0; if (!u || !tk_rd(u + 0xC, &mode, 4) || mode != 3) return 0;   // 3 = 在地上 | 3 = on the ground
+    if (((uint32_t (*)(uint64_t))(m->base + 0x570260))(u) == 0x20646c67u) return 0;   // 金币堆不进方块 | a gold pile is not rewritten into the cube
     int (*is_type)(uint64_t, int) = (void *)(m->base + 0x574bc0); int (*stackable)(uint64_t) = (void *)(m->base + 0x5722f0);
     if (is_type(u, 0x16) || is_type(u, 0x12) || stackable(u)) return 0;
     if (!tk_rd(p + 0xd8, &game, 8) || !game || !tk_rd(p + 0x90, &inv, 8) || !inv) return 0;
@@ -1294,6 +1296,26 @@ static int cube_pickup_rewrite(const uint64_t *regs, uint8_t out[4 + 25]) {
     static int logged; if (logged++ < 40) { uint32_t code = ((uint32_t (*)(uint64_t))(m->base + 0x570260))(u); int dm_potpick_auto(uint32_t);
         LOG("规则：背包放不下，拾取物品 %u（%.4s，%s）改进方块 %u（方块格 %u,%u）", id, (const char *)&code, dm_potpick_auto(id) ? "药水自动拾取发的" : "玩家点的", cid, tx & 0xffff, ty); }
     return 1;
+}
+// 背包放不下时先按住这一个 0x16，主线程整理一次再重发一次（dm_qol.c）。正在整理、或这件已经重试过，就放行，让下面的进方块接手。
+// 卷轴 / 书 / 可堆叠 / 金币不按住（金币也不进方块，见上面）。不要求身上有方块：没有方块也整理一次。
+// When the inventory cannot take a pickup, hold that one 0x16, sort once on the main thread and resend once (dm_qol.c). While a sort is in progress, or this item was already retried, let it through so the cube path below can take it.
+// Scrolls / tomes / stackables / gold are not held (gold is not sent to the cube either, see above). A cube is not required: sort once even without one.
+static int sort_retry_hold(const uint64_t *regs) {
+    int dm_qol_sort_busy(void); int dm_qol_sort_tried(uint32_t); void dm_qol_sort_arm(const uint8_t *, uint32_t);
+    uint8_t in[4 + 17]; uint32_t id, flag;
+    if (dm_qol_sort_busy() || regs[1] != 17 || !tk_rd(regs[0], in, sizeof in) || in[4] != 0x16) return 0;
+    memcpy(&id, in + 5, 4); memcpy(&flag, in + 17, 4); if (!flag || !id || dm_qol_sort_tried(id)) return 0;
+    module_t *m = main_mod(); uint64_t G = g_lastG, p = g_player_unit, u = 0, game = 0;
+    if (!m || !in_game() || !p || !tk_rd(G + 0x2e30 + 8 * (id & 0x7f), &u, 8)) return 0;
+    for (int k = 0; u && k < 4096; k++) { uint32_t t = 0, i = 0; if (!tk_rd(u, &t, 4) || !tk_rd(u + 8, &i, 4)) return 0; if (t == 4 && i == id) break; if (!tk_rd(u + 0x158, &u, 8)) return 0; }
+    uint32_t mode = 0; if (!u || !tk_rd(u + 0xC, &mode, 4) || mode != 3) return 0;
+    int (*is_type)(uint64_t, int) = (void *)(m->base + 0x574bc0); int (*stackable)(uint64_t) = (void *)(m->base + 0x5722f0);
+    if (is_type(u, 0x16) || is_type(u, 0x12) || stackable(u)) return 0;
+    if (((uint32_t (*)(uint64_t))(m->base + 0x570260))(u) == 0x20646c67u) return 0;
+    if (!tk_rd(p + 0xd8, &game, 8) || !game) return 0;
+    if (((autoplace_res (*)(uint64_t, uint64_t, uint64_t))(m->base + 0x646840))(game, p, u).ok) return 0;
+    dm_qol_sort_arm(in + 4, id); return dm_qol_sort_busy();
 }
 // 药水自动拾取的服务端一道（说明见 dm_potpick.c 文件头）：自动拾取发出的 0x16 在处理这一刻用原版腰带找位 main+0x561de0(物品栏, 物品, &槽, 1)
 // 对服务端状态再核一次，放不进腰带就丢包（返回 1），药留在地上——不进背包、不进魔盒。玩家自己点的 0x16 不在自动拾取的表里，不经过这里。
@@ -1336,6 +1358,7 @@ void c2s_deliver(uint64_t *regs) {   // svc #0x81：收包泵 → 0x632510(包, 
     if (!recv) { module_t *m = NULL; for (int i = 0; i < g_nmod; i++) if (!strcmp(g_mod[i].name, "main")) m = &g_mod[i];
                  recv = (void (*)(uint64_t, uint64_t, uint64_t, uint64_t))(m->base + 0x632510); }
     if (potpick_gate(regs)) return;
+    if (sort_retry_hold(regs)) return;   // 放不下：先整理再重发这一件，这一次不投递 | does not fit: sort and resend this one, do not deliver it now
     uint8_t cube[4 + 25]; if (cube_pickup_rewrite(regs, cube)) { recv((uint64_t)(uintptr_t)cube, 25, regs[2], regs[3]); return; }
     // 捡物品包（0x16）记一行去向（腰带案：玩家手动点地上的药捡起来原先不打日志，线上日志缺这一环）：物品码、谁发的、处理完落在哪个容器 / 页 / 格。
     // 处理是同步的（收包泵里直接分发），所以投递前记下 id 与码、投递后读这件在服务端的位置。封顶：每 25 拍最多 4 行，超出的只计数、下一行带出，刷怪掉落高峰冲不爆日志。

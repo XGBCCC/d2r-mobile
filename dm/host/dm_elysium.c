@@ -10,13 +10,13 @@
 //   取 max(机会值, 下限)；再减去 机会值 × 宝藏表加成 ÷ 1024；机会值 < 1 必出，否则掷 [0, 机会值) < 128 即出。概率 = 128 ÷ 机会值。
 //   所以「概率 ×N」= 机会值 ÷N = 基数 ÷N、除数 ×N、下限 ÷N（魔法寻找与宝藏表加成是按比例的，次序不变）。机会值 ≤ 128 时本来就必出，÷N 后仍必出（封顶 100%）。
 //
-// 符文 ×5：宝藏表运行时结构——[数据表+0xdb0] 记录数组、+0xdb8 条数，每条 0x50 字节：+0x10 / +0x14 总权重（经典 / 资料片两列）、+0x18 次数、+0x1c「不掉落」权重、
+// 符文 ×12：宝藏表运行时结构——[数据表+0xdb0] 记录数组、+0xdb8 条数，每条 0x50 字节：+0x10 / +0x14 总权重（经典 / 资料片两列）、+0x18 次数、+0x1c「不掉落」权重、
 //   +0x38 掉落项数组、+0x40 项数；每项 0x1c 字节：+0 / +4 该项之前的累计权重（两列）、+8 物品行号或宝藏表号、+0xc 标志（0x04 = 这一项是另一张宝藏表）。
 //   符文组 = 所有项都是符文物品（物品码 r 加两位数字）或另一张符文组的表（3.3 里是 17 张连成一串，高级的引用低一级的，决定出哪一级符文——这一层不动）。
 //   只在「直接引用符文组的那一层」改一次（3.3 里是各幕的「好东西」表 14 张 + 女伯爵符文表 3 张），不会层层叠乘：
-//   · 该表（总权重 T、其中符文项权重和 w）里符文项的权重 ×5，其它项不动，新总权重 T+4w。单这样改，符文在表内的占比只到 5w/(T+4w)（不足 5 倍），同表其它项（宝石、首饰等）也被挤掉一截；
-//     所以再到引用这张表的上一层去补：上一层所有项与「不掉落」×T，这张表的权重改为原值 ×(T+4w)，多出来的 4w 份从「不掉落」里扣（扣到 0 为止）。
-//     「不掉落」够扣时：选到符文的最终概率恰为原来的 5 倍，同表其它项、上一层其它项的最终概率都不变，代价只是空掉落变少。不够扣（上一层没有「不掉落」）时符文不足 5 倍、其它项略降。
+//   · 该表（总权重 T、其中符文项权重和 w）里符文项的权重 ×12，其它项不动，新总权重 T+11w。单这样改，符文在表内的占比只到 12w/(T+11w)（不足 12 倍），同表其它项（宝石、首饰等）也被挤掉一截；
+//     所以再到引用这张表的上一层去补：上一层所有项与「不掉落」×T，这张表的权重改为原值 ×(T+11w)，多出来的 11w 份从「不掉落」里扣（扣到 0 为止）。
+//     「不掉落」够扣时：选到符文的最终概率恰为原来的 12 倍，同表其它项、上一层其它项的最终概率都不变，代价只是空掉落变少。不够扣（上一层没有「不掉落」）时符文不足 12 倍、其它项略降。
 //   · w == T（整张表只出符文，女伯爵那三张，上一层是「两张表各出一次」没有权重可调）：只把这张表自己的「不掉落」权重清零（每次必出）。
 //   经典列（非资料片角色用）符文权重本来就是 0，只跟着同乘，表内比例不变；「不掉落」两列共用，经典角色的空掉落会略少。
 // boss 永远首杀：怪物表——[数据表+0xf90] 记录数组、+0xf98 条数，每条 0x1fc 字节；每个难度一块 0x10 字节（+0xc0 + 难度×0x10）：
@@ -33,13 +33,13 @@
 //   Decision (from main+0x65c7c4, unique; from 0x65c8a4, set): chance value = (base − level difference ÷ divisor) × 128; with magic find mf = (base − level difference ÷ divisor) × 12800 ÷ conversion (100 + mf for mf ≤ 10, otherwise 100 + mf×250÷(mf+250), 500 for sets);
 //   take max(chance value, minimum); then subtract chance value × treasure class bonus ÷ 1024; chance value < 1 always drops, otherwise it drops if a roll in [0, chance value) < 128. Probability = 128 ÷ chance value.
 //   So 'probability ×N' = chance value ÷N = base ÷N, divisor ×N, minimum ÷N (magic find and the treasure class bonus are proportional, and the order is unchanged). When the chance value ≤ 128 it always dropped anyway, and after ÷N it still always drops (capped at 100%).
-// Runes ×5: runtime structure of the treasure class tables -- [data table+0xdb0] record array, +0xdb8 count, 0x50 bytes per record: +0x10 / +0x14 total weight (two columns, classic / expansion), +0x18 count, +0x1c 'NoDrop' weight,
+// Runes ×12: runtime structure of the treasure class tables -- [data table+0xdb0] record array, +0xdb8 count, 0x50 bytes per record: +0x10 / +0x14 total weight (two columns, classic / expansion), +0x18 count, +0x1c 'NoDrop' weight,
 //   +0x38 drop entry array, +0x40 entry count; 0x1c bytes per entry: +0 / +4 cumulative weight before this entry (two columns), +8 item row number or treasure class number, +0xc flags (0x04 = this entry is another treasure class).
 //   Rune group = all entries are rune items (item code r plus two digits) or another rune group table (in 3.3 there are 17 tables linked in a chain, the higher one referencing the next lower one, deciding which rune level drops -- this layer is not touched).
 //   The change is made only once, at 'the layer that references the rune groups directly' (in 3.3 the 14 per-act 'Good' tables + the 3 Countess rune tables), so it does not multiply layer upon layer:
-//   - In that table (total weight T, of which the rune entries' weights sum to w) the rune entries' weights are ×5, the other entries are untouched, and the new total weight is T+4w. With this change alone the runes' share within the table only reaches 5w/(T+4w) (less than 5x), and the other entries of the same table (gems, jewelry, etc.) are also squeezed down a bit;
-//     so compensation is then made in the layer above that references this table: all entries of the layer above and 'NoDrop' are ×T, this table's weight becomes the original value ×(T+4w), and the extra 4w shares are deducted from 'NoDrop' (down to 0 at most).
-//     When 'NoDrop' is enough to deduct from: the final probability of picking a rune is exactly 5 times the original, the final probabilities of the other entries of the same table and of the other entries of the layer above are all unchanged, and the only cost is fewer empty drops. When it is not enough (the layer above has no 'NoDrop') runes are less than 5x and the other entries drop slightly.
+//   - In that table (total weight T, of which the rune entries' weights sum to w) the rune entries' weights are ×12, the other entries are untouched, and the new total weight is T+11w. With this change alone the runes' share within the table only reaches 12w/(T+11w) (less than 12x), and the other entries of the same table (gems, jewelry, etc.) are also squeezed down a bit;
+//     so compensation is then made in the layer above that references this table: all entries of the layer above and 'NoDrop' are ×T, this table's weight becomes the original value ×(T+11w), and the extra 11w shares are deducted from 'NoDrop' (down to 0 at most).
+//     When 'NoDrop' is enough to deduct from: the final probability of picking a rune is exactly 12 times the original, the final probabilities of the other entries of the same table and of the other entries of the layer above are all unchanged, and the only cost is fewer empty drops. When it is not enough (the layer above has no 'NoDrop') runes are less than 12x and the other entries drop slightly.
 //   - w == T (the whole table drops only runes, the three Countess tables, whose layer above is 'one drop from each of two tables' with no weights to adjust): only this table's own 'NoDrop' weight is cleared to zero (always drops).
 //   The classic column (used by non-expansion characters) has rune weight 0 to begin with and is only multiplied along, so the in-table ratio is unchanged; 'NoDrop' is shared by both columns, so classic characters get slightly fewer empty drops.
 // A boss is always a first kill: monster table -- [data table+0xf90] record array, +0xf98 count, 0x1fc bytes per record; one 0x10-byte block per difficulty (+0xc0 + difficulty×0x10):
@@ -56,8 +56,8 @@
 #include <string.h>
 
 #define RATIO_REC 0x44
-#define UNIQUE_MUL 5
-#define SET_MUL 3
+#define UNIQUE_MUL 8
+#define SET_MUL 5
 void uimsg_subscribe(void (*fn)(const char *cat, const char *act, const char *arg));
 const char *dm_save_workdir(void);
 
@@ -80,7 +80,7 @@ static uint64_t tables_sum(uint8_t *b) { uint64_t h = 0xcbf29ce484222325ull; for
 
 #define TC_REC 0x50
 #define TC_ENT 0x1c
-#define RUNE_MUL 5
+#define RUNE_MUL 12
 #define NODROP_DIV 10
 typedef struct { uint64_t arr, n; uint8_t *recs; uint8_t **ents; } tc_snap;
 static tc_snap g_tc[4];
@@ -155,10 +155,10 @@ static void tc_apply(uint8_t *b) {
                 for (uint64_t k = 0; k < ne; k++) { wc[k] *= D; we[k] *= D; } we[j] = g * A; N = N * D - g * (A - D); if (N < 0) { N = 0; nshort++; }
                 tc_write(r, wc, we); *(int32_t *)(r + 0x1c) = (int32_t)N; npar++; } }
         // 第三步（所有怪的「不掉落」都降到十分之一）：每张表的「不掉落」权重 ÷10（四舍五入，原来非 0 的至少留 1，「偶尔空」不变成「必出」）。
-        // 放在符文补偿之后：补偿按原刻度从「不掉落」里扣出符文多出的份额（其它项绝对概率不变），剩下的再 ÷10，所以符文仍是其它项的 5 倍关系。
+        // 放在符文补偿之后：补偿按原刻度从「不掉落」里扣出符文多出的份额（其它项绝对概率不变），剩下的再 ÷10，所以符文仍是其它项的 12 倍关系。
         // 人数档的换算（游戏掉落时按人数把「不掉落」再缩一次）读的就是这个字段，在 ÷10 之后照常生效
         // Step 3 (the 'NoDrop' of all monsters is reduced to one tenth): the 'NoDrop' weight of every table ÷10 (rounded; values that were non-zero keep at least 1, so 'occasionally empty' does not become 'always drops').
-        // Placed after the rune compensation: the compensation deducts the runes' extra share from 'NoDrop' on the original scale (the absolute probability of the other entries is unchanged), and what remains is then ÷10, so runes keep the 5x relation to the other entries.
+        // Placed after the rune compensation: the compensation deducts the runes' extra share from 'NoDrop' on the original scale (the absolute probability of the other entries is unchanged), and what remains is then ÷10, so runes keep the 12x relation to the other entries.
         // The players-setting conversion (at drop time the game shrinks 'NoDrop' once more by player count) reads this very field and takes effect as usual after the ÷10
         int ndiv = 0; for (uint64_t i = 0; i < n; i++) { uint8_t *r = (uint8_t *)(uintptr_t)(s->arr + i * TC_REC); int32_t N = *(int32_t *)(r + 0x1c); if (N <= 0) continue; int32_t q = (N + NODROP_DIV / 2) / NODROP_DIV; *(int32_t *)(r + 0x1c) = q ? q : 1; ndiv++; }
         if (v == 2 || getenv("DM_ELYSIUM_LOG")) LOG("极乐世界：版本 %d 宝藏表——符文组 %d 张；引用它的表里符文权重 ×%d 的 %d 张、整表只出符文改成必出的 %d 张；上一层补偿 %d 项（其中「不掉落」不够扣的 %d 项）；「不掉落」÷%d 的 %d 张", v, nrune, RUNE_MUL, nx5, nfull, npar, nshort, NODROP_DIV, ndiv);

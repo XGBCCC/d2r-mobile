@@ -1,4 +1,5 @@
-// 开背包自动补腰带（「双击腰带空格补满」点不准，改成开背包自动补；双击补满保留）。开关跟自定义页「自动拾取药水」（pot_pick）。
+// 开背包自动补腰带（「双击腰带空格补满」点不准，改成开背包自动补；双击补满保留）。
+// pot_pick 开着时腰带由 dm_qol.c 按难度补最高档，这里不从背包搬。关着才搬。DM_POT_PICK=0 时两边都不搬（界面测试仍能验双击补满）。
 // 规则：
 //   · 只在物品栏从关到开的那一下触发一次；开着期间不再补（不和玩家拖动抢）。
 //   · 只动红（hp1–hp5）/ 蓝（mp1–mp5）/ 紫（rvs、rvl）；解毒 / 解冻 / 耐力和卷轴不进腰带。
@@ -10,7 +11,7 @@
 // 服务端收包时自己再找一次位，和包里的槽不相等就拒收（见 dm_beltauto_step 里的说明）。槽号 = 行 × 4 + 列。一次一瓶、等客户端看到它进了腰带（≤ 60 帧）再放下一瓶；没进的那瓶记红、本轮跳过。
 // 腰带格数照原版找位里的算法：身上腰带（装备格 8）的腰带类型 0x5cc9b0（没腰带 = 2）→ 数据表（版本表 +0x1578，每行 0x120）+4 = 格数。
 // Auto-fill the belt when the inventory opens ("double-tap an empty belt cell to fill" is hard to hit, so it became auto-fill on opening the inventory;
-// double-tap fill is kept). The switch follows "Auto-pick potions" (pot_pick) on the Custom page.
+// double-tap fill is kept). While pot_pick is on, dm_qol.c refills the belt at this difficulty's tier and this file does not move potions out of the inventory. It does that only while the switch is off. DM_POT_PICK=0 turns both off (so the UI test can still check double-tap fill).
 // Rules:
 //   - Triggers only once, at the moment the inventory goes from closed to open; no more filling while it stays open (does not fight with the player's
 //     dragging).
@@ -109,9 +110,11 @@ void dm_beltauto_step(uint8_t *b) {   // 游戏主线程每帧（dm_world.c） |
               if (c >= 0 && c < 4 && D.belt[c]) { dm_belt_use(c, 0); any = 1; break; } }
           if (!any) { st = 2; LOG("DM_TEST_BELT_DRINK：第 %s 列喝空了（帧 %llu）", cols, (unsigned long long)f); } } }
     if (atomic_exchange(&g_req, 0)) {
-        static int env = -2; if (env == -2) { const char *e = getenv("DM_POT_PICK"); env = e ? e[0] != '0' : -1; }   // 同药水自动拾取：测试强制开关优先于自定义页 | same as potion auto-pickup: the test force switch takes priority over the custom settings page
-        if (env >= 0 ? env : dm_custom_get("pot_pick")) { active = 1; moves = 0; want_slot = -1; next = 0; deadline = 0; g_ntried = 0; fails = 0; }
-        else LOG("开背包补腰带：开关关着，不动");
+        static int env = -2; if (env == -2) { const char *e = getenv("DM_POT_PICK"); env = e ? e[0] != '0' : -1; }
+        int dm_beltfill_on(void);
+        if (env == 0) { static int n; if (n++ < 3) LOG("开背包补腰带：DM_POT_PICK=0，不动"); }   // 界面测试要自己验双击补满 | the UI test checks double-tap fill itself
+        else if (dm_beltfill_on()) { static int n; if (n++ < 3) LOG("开背包补腰带：红蓝由难度补药接管，不从背包搬"); }
+        else { active = 1; moves = 0; want_slot = -1; next = 0; deadline = 0; g_ntried = 0; fails = 0; }   // 开关关着：仍从背包补 | switch off: still refill from the inventory
     }
     if (!active) return;
     uint64_t fr = dm_guest_frame(); if (fr < next) return;

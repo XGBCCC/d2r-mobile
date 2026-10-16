@@ -1,4 +1,4 @@
-// 掉落过滤（用原版自带的战利品过滤器，不自造一套）：按难度自动选档——普通难度不藏、噩梦「轻筛」、地狱（秘境只在地狱开）「重筛」。
+// 掉落过滤（用原版自带的战利品过滤器，不自造一套）：按难度自动选档——普通和噩梦「轻筛」、地狱（秘境只在地狱开）「重筛」。
 // 原版的机制（Switch 版主程序里完整存在，只是暂停菜单里的入口被我们的布局藏着）：
 //   · 规则文件 <存档>/Settings/<配置名>.fltr 在启动时全部载入；<存档>/Settings/lootfilter.json 的 Profiles 段记「角色名 → 配置名」，
 //     每次进局收到自己的玩家单位时重读一次这个文件、按角色名选当前配置（main+0x464130 → 0x382280 → 0x381d10）。
@@ -14,7 +14,7 @@
 // lootfilter.json 不碰：实测原版只在启动时读它一次，进局时用的是内存里那份「角色 → 配置」，改文件不管用；进局时原版按它把名字设回去，下一次巡检再改过来。
 // 身上装着弓 / 弩（含副手那套）时箭矢弩矢不藏，局中换上 / 卸下弓半秒内跟着变。
 // 开关：「自定义」设置 loot_filter（缺省开 = 按难度自动；关 = 全显示）。测试强制：DM_LOOTFILTER=off / lite / heavy。
-// Loot filter (uses the game's built-in loot filter rather than building our own): the tier is picked by difficulty: nothing hidden on Normal, "lite" on Nightmare, "heavy" on Hell (Greater Rifts only open on Hell).
+// Loot filter (uses the game's built-in loot filter rather than building our own): the tier is picked by difficulty: "lite" on Normal and Nightmare, "heavy" on Hell (Greater Rifts only open on Hell).
 // The game's mechanism (fully present in the Switch main executable; only its pause-menu entry is hidden by our layout):
 //   · Rule files <save>/Settings/<profile name>.fltr are all loaded at startup; the Profiles section of <save>/Settings/lootfilter.json records "character name → profile name",
 //     and each time a game is entered and our own player unit arrives, this file is re-read and the current profile chosen by character name (main+0x464130 → 0x382280 → 0x381d10).
@@ -42,17 +42,17 @@
 #define T_MISSILE 47   // 物品类型表行号：miss（弓、弩、亚马逊弓的父类型） | item type table row: miss (parent type of bows, crossbows, Amazon bows)
 int dm_diag_difficulty(void);
 
-// 轻筛藏：精力 / 解毒 / 解冻药，红蓝药最低两档，回城与鉴定的卷轴和书，全部投掷药，低质量（破损 / 粗糙）装备，箭矢弩矢（没装弓弩时）。
-// 重筛再藏：红蓝药第三档；普通档的白装（带孔 / 无形的留着，头环不分档整类留着）；普通档的蓝装（饰品、头环、各职业专属留着）。
-// 任何档都不藏：紫药、钥匙、暗金、套装、稀有、符文、宝石、护身符、珠宝、任务物品与各种材料、金币——规则里压根不提它们。
-// Lite hides: Stamina / Antidote / Thawing potions, the two lowest tiers of Healing and Mana potions, Town Portal and Identify scrolls and tomes, all throwing potions, low quality (Cracked / Crude) gear, arrows and bolts (when no bow or crossbow is equipped).
-// Heavy also hides: the third tier of Healing and Mana potions; normal-tier white items (socketed / ethereal ones are kept, circlets have no tiers and are kept as a whole); normal-tier magic items (jewelry, circlets and class-specific items are kept).
-// Never hidden at any tier: Rejuvenation potions, keys, Unique, Set, Rare, runes, gems, charms, jewels, quest items and all kinds of materials, gold. The rules simply never mention them.
+// 轻筛、重筛都藏：精力 / 解毒 / 解冻药，全部红蓝药（hp1–hp5、mp1–mp5），小紫和满紫（rvs、rvl），回城与鉴定的卷轴和书，全部投掷药，低质量（破损 / 粗糙）装备，箭矢弩矢（没装弓弩时）。
+// 重筛再藏：普通档的白装（带孔 / 无形的留着，头环不分档整类留着）；普通档的蓝装（饰品、头环、各职业专属留着）。
+// 任何档都不藏：钥匙、暗金、套装、稀有、符文、宝石、护身符、珠宝、任务物品与各种材料、金币——规则里压根不提它们。
+// Lite and heavy both hide: Stamina / Antidote / Thawing potions, every Healing and Mana potion (hp1–hp5, mp1–mp5), small and full Rejuvenation (rvs, rvl), Town Portal and Identify scrolls and tomes, all throwing potions, low quality (Cracked / Crude) gear, arrows and bolts (when no bow or crossbow is equipped).
+// Heavy also hides: normal-tier white items (socketed / ethereal ones are kept, circlets have no tiers and are kept as a whole); normal-tier magic items (jewelry, circlets and class-specific items are kept).
+// Never hidden at any tier: keys, Unique, Set, Rare, runes, gems, charms, jewels, quest items and all kinds of materials, gold. The rules simply never mention them.
 static void write_fltr(const char *dir, const char *name, int heavy, int ammo) {
     char p[1300], t[1320]; snprintf(p, sizeof p, "%s/%s.fltr", dir, name); snprintf(t, sizeof t, "%s.tmp", p);
     FILE *f = fopen(t, "w"); if (!f) { LOG("【红】掉落过滤：规则文件写不了 %s", p); return; }
     fprintf(f, "{\n \"name\": \"%s\",\n \"rules\": [\n", name);
-    fprintf(f, "  {\"name\": \"HIDE consumables\", \"enabled\": true, \"ruleType\": \"hide\", \"filterEtherealSocketed\": false, \"itemCode\": [\"vps\", \"yps\", \"wms\", \"hp1\", \"hp2\", \"mp1\", \"mp2\", %s\"tsc\", \"isc\", \"tbk\", \"ibk\"]},\n", heavy ? "\"hp3\", \"mp3\", " : "");
+    fprintf(f, "  {\"name\": \"HIDE consumables\", \"enabled\": true, \"ruleType\": \"hide\", \"filterEtherealSocketed\": false, \"itemCode\": [\"vps\", \"yps\", \"wms\", \"hp1\", \"hp2\", \"hp3\", \"hp4\", \"hp5\", \"mp1\", \"mp2\", \"mp3\", \"mp4\", \"mp5\", \"rvs\", \"rvl\", \"tsc\", \"isc\", \"tbk\", \"ibk\"]},\n");
     fprintf(f, "  {\"name\": \"HIDE throwing potions\", \"enabled\": true, \"ruleType\": \"hide\", \"filterEtherealSocketed\": false, \"equipmentItemCode\": [\"gps\", \"gpm\", \"gpl\", \"ops\", \"opm\", \"opl\"]},\n");
     if (ammo) fprintf(f, "  {\"name\": \"HIDE ammo\", \"enabled\": true, \"ruleType\": \"hide\", \"filterEtherealSocketed\": false, \"itemCategory\": [\"ammo\"]},\n");
     if (heavy) {
@@ -73,7 +73,7 @@ void dm_lootfilter_seed(const char *save_dir) {
 }
 __attribute__((constructor)) static void lootfilter_hook_install(void) { extern void (*g_dm_mount_seed_hook)(const char *); g_dm_mount_seed_hook = dm_lootfilter_seed; }
 static const char *want(int bow, int *why_diff) {   // 现在该用哪一份；"" = 不过滤 | which one should be in use now; "" = no filtering
-    int diff = dm_diag_difficulty(), lvl = diff == 1 ? 1 : diff == 2 ? 2 : 0; *why_diff = diff;
+    int diff = dm_diag_difficulty(), lvl = (diff == 0 || diff == 1) ? 1 : diff == 2 ? 2 : 0; *why_diff = diff;   // 普通、噩梦轻筛，地狱重筛；不在局内不过滤 | lite on Normal and Nightmare, heavy on Hell; no filter when not in a run
     const char *e = getenv("DM_LOOTFILTER");
     if (e && !strcmp(e, "off")) lvl = 0; else if (e && !strcmp(e, "lite")) lvl = 1; else if (e && !strcmp(e, "heavy")) lvl = 2;
     else if (!dm_custom_get("loot_filter")) lvl = 0;

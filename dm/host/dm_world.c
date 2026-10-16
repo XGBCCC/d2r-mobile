@@ -661,7 +661,7 @@ void dm_world_pump(void) {   // 取手柄处每帧调 | Called every frame at th
     uint8_t *b = wb(); if (!b) return;
     if (g_it.active) w_interaction_poll(w_player(), dm_guest_frame());
     DM_PROF(0, "w.watch", w_watch_step(b));
-    { void dm_potpick_step(uint8_t *); DM_PROF(0, "w.potpick", dm_potpick_step(b)); }   // 药水自动拾取（dm_potpick.c） | automatic potion pickup (dm_potpick.c)
+    { void dm_potpick_step(uint8_t *); DM_PROF(0, "w.potpick", dm_potpick_step(b)); }   // 金币自动拾取，以及掉落过滤 / 整理重试的每帧入口（dm_potpick.c） | gold auto-pickup, and the per-frame entry for the loot filter / sort retry (dm_potpick.c)
     { void dm_padmode_step(uint8_t *, uint64_t); DM_PROF(0, "w.padmode", dm_padmode_step(b, dm_guest_frame())); }   // 手柄 / 触屏布局切换（dm_padmode.c） | Controller / touch layout switching (dm_padmode.c)
     { void dm_beltauto_step(uint8_t *); DM_PROF(0, "w.beltauto", dm_beltauto_step(b)); }   // 开背包自动补腰带（dm_beltauto.c） | Auto-refill the belt when the inventory opens (dm_beltauto.c)
     { void dm_pouch_step(uint8_t *); DM_PROF(0, "w.pouch", dm_pouch_step(b)); }   // 百宝囊 / 存放（dm_pouch.c） | pouch / deposit (dm_pouch.c)

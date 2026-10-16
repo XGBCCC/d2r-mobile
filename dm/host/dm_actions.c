@@ -744,6 +744,7 @@ void dm_actions_pump(void) {
     // measured: no goods deducted, no gold deducted, the shelf cell still there (blocking here first used to leave the player with no on-screen feedback at all after a drag-to-buy). can_buy is only a reading
     if (atomic_exchange(&g_buy, 0)) { int r = !sel ? -1 : trade(pl, sel, 0, 0, 1, 0); LOG("商人：买选中的货 id %u（%s，货架格 %d,%d 占 %dx%d，价 %d，身上 %d + 箱内 %d）→ %d（1 已发、-1 没选中）", s.sel_id, s.sel_code, s.sel_gx, s.sel_gy, s.sel_gw, s.sel_gh, s.buy_price, s.gold, s.stash_gold, r); }
     if (atomic_exchange(&g_sell, 0)) { int r = held && s.sell_price > 0 ? trade(pl, held, 1, 0, 1, 0) : -1; LOG("商人：卖手上的物品 id %u（卖价 %d，身上 %d）→ %d", s.held_id, s.sell_price, s.gold, r); }
+    { void dm_qol_vendor_pump(uint8_t *); dm_qol_vendor_pump(b); }   // 打开交易商人：自动卖掉背包杂物，会修的接着修（dm_qol.c）。排在玩家拖过去卖的后面，同一帧先让玩家卖掉手上的 | Opening a trade vendor: sell junk in the inventory, then repair at a vendor that repairs (dm_qol.c). Placed after a drag-to-sell, so the player's own sale on this frame goes first
     // 放进腰带：main+0x3c1cd0(物品, 玩家, 来源页, 1 = 从背包格直接移, {槽, 已定槽 = 0})——手柄版背包格上「移到腰带」调的同一个（0x3cbff0–0x3cc014），
     // 它自己找腰带空位、发 0x53 包；前置同原版：main+0x3c1b28(物品) = 类型可放腰带且此刻有位，不满足就不动（腰带满时物品原地不动）
     // 测试动作：对背包（页 0）里第一瓶药水调 dm_belt_put（物品 id 每局不同，脚本里写不死）

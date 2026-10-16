@@ -60,7 +60,7 @@ dmBrBaal	巴尔	Baal	首领连战首领名
 dmBrDiabloClone	暗黑迪亚波罗	Diablo Clone	首领连战第 11 关（怪物 333）
 dmBrUbers	超级墨菲斯托、超级迪亚波罗、超级巴尔	Uber Mephisto, Uber Diablo, Uber Baal	首领连战第 12 关
 dmBlissTitle	极乐世界	Elysium	建角页「极乐世界」勾选标题（touch_layout.py）
-dmBlissDesc	暗金 ×5、套装 ×3、符文 ×5；Boss 永远按首次击败掉落。	Unique ×5, Set ×3, Runes ×5; bosses always drop as on first kill.	建角页「极乐世界」说明
+dmBlissDesc	暗金 ×8、套装 ×5、符文 ×12；Boss 永远按首次击败掉落。	Unique ×8, Set ×5, Runes ×12; bosses always drop as on first kill.	建角页「极乐世界」说明
 dmRwHint	先移到个人仓库或背包	Move out of shared stash first	符文之语清单：底材在共享仓库时的灰字
 dmRwGo	一键合成	Craft	符文之语清单每行 / 详情页的合成按钮
 dmPauseShareLog	分享诊断日志	Share Diagnostics	暂停菜单按钮
@@ -70,7 +70,7 @@ dmCustomDropLight	高价值掉落光柱	Light beam on valuable drops	自定义�
 dmCustomMapMark	小地图标注出入口、小站与任务终点	Automap: exits, waypoints, quests	自定义页开关；英文用原版词 keybinds[CfgAutoMap]「Automap」、objects[Waypoint]
 dmCustomItemNotes	物品注释与旧译名（重启后生效）	Item notes (Chinese only, restart)	自定义页开关（英文下注释不显示）
 dmCustomIcloud	iCloud 同步存档（重启后生效）	iCloud save sync (after restart)	自定义页开关
-dmCustomPotPick	腰带有空位时自动拾取能放进去的药水	Auto-pick potions into belt	自定义页开关
+dmCustomPotPick	红蓝药保持本难度最高档，喝了马上补	Top-tier potions, refill when drunk	自定义页开关；开着时腰带补当前难度最高档红蓝，地狱满紫回城跟商人交易时补。地上的药不捡
 dmCustomDropHaptic	高价值物品掉落时震动	Vibrate on valuable drops	自定义页开关
 dmCustomGemPick	符文与宝石自动拾取（直接进高级仓库）	Auto-stash runes & gems	自定义页开关
 dmCustomStoreBtn	背包「存放」按钮	Inventory Deposit button	自定义页开关
@@ -79,7 +79,7 @@ dmCustomQ3dSmooth	流畅优先	Smoothness first	自定义页「3D 画质」单�
 dmCustomQ3dSmoothHint	掉帧时自动降低 3D 画面清晰度	Lowers 3D resolution when frames drop	流畅优先下面的说明小字
 dmCustomQ3dQuality	画质优先	Quality first	自定义页「3D 画质」单选的第二项（q3d=1）
 dmCustomQ3dQualityHint	始终保持设定的 3D 清晰度	Always keeps the set 3D resolution	画质优先下面的说明小字
-dmCustomLootFilter	掉落过滤（噩梦起自动隐藏杂物）	Loot Filter (auto, Nightmare+)	自定义页开关；Loot Filter 是原版过滤器的英文名
+dmCustomLootFilter	掉落过滤（普通、噩梦轻筛，地狱重筛）	Loot Filter (Normal+ lite, Hell heavy)	自定义页开关；Loot Filter 是原版过滤器的英文名。普通和噩梦轻筛，地狱重筛，红蓝紫都藏
 dmCustomAutoBuff	自动补上增益技能（站着不动时）	Auto-recast buffs when idle	自定义页开关
 dmCustomLang	语言 / Language	语言 / Language	自定义页语言那一行的标签。两种界面写同样的中英两个词：这一行的文字控件指定原版的全球字体 BlizzardGlobal（英文界面缺省的 Formal 字体没有汉字，全球字体有；原版标题页、队伍名、合规提示同样按控件指定它）
 dmCustomLangZh	中文	中文	语言行的选项一（两种界面都写「中文」，同上用全球字体）
