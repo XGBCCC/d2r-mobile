@@ -89,9 +89,9 @@ Also, besides diagnostics, `diag.c` holds the entry hook of every server tick: w
 
 | File | What it does |
 |---|---|
-| `dm_qol.c` | Refills the belt with this difficulty's best healing and mana; on Hell, full rejuvenation is refilled in town. Sorts once and retries a pickup that does not fit. Opening a vendor sells junk and then repairs |
-| `dm_potpick.c` | Picks up nearby gold piles automatically (potions on the ground are no longer picked up) |
-| `dm_beltauto.c` | Refills the belt from the inventory when it is opened, only while the switch above is off |
+| `dm_qol.c` | In an Elysium run, holds life and mana at max and does not let equipped durability fall. A gold cost is written back to the total from before the cost, never to the cap. Junk in the inventory is sold while a trade vendor is open |
+| `dm_potpick.c` | Per-frame entry for the loot filter, buff recast, the client-side Elysium life/mana hold, and gold-pile pickup |
+| `dm_beltauto.c` | Opening the inventory no longer refills the belt from the inventory. The `DM_TEST_BELT_DRINK` switch remains |
 | `dm_dropfilter.c` | The light beam and landing sound for high-value drops |
 | `dm_drophaptic.c` | Haptic feedback when a high-value item lands, in three strengths |
 | `dm_freetp.c` | Free town portal: reuses the original town portal skill directly |

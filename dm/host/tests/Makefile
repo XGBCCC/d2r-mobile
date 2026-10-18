@@ -16,6 +16,7 @@ run: \
 	$(B)/t_condvar \
 	$(B)/t_condvar_old \
 	$(B)/t_doorspot \
+	$(B)/t_elysium_min \
 	$(B)/t_fs \
 	$(B)/t_fs_case \
 	$(B)/t_gamble \
@@ -167,7 +168,9 @@ $(B)/t_rift_clock: t_rift_clock.c ../dm_rift.c ../dm_rift.h ../hle_os.c ../hle.h
 	clang -O1 -Wall -Wno-unused-function -ffunction-sections -fdata-sections -Wl,-dead_strip -I.. -o $@ t_rift_clock.c ../hle_os.c
 $(B)/t_rift_next: t_rift_next.c ../dm_rift.c ../dm_rift.h ../hle_os.c ../hle.h ../dm.h | $(B)
 	clang -O1 -Wall -Wno-unused-function -ffunction-sections -fdata-sections -Wl,-dead_strip -I.. -o $@ t_rift_next.c ../hle_os.c
-$(B)/t_potions: t_potions.c t_potions_drink.c ../dm_qol.c ../dm_actions.c ../hle_os.c | $(B)
+$(B)/t_elysium_min: t_elysium_min.c ../dm_qol.c ../dm_elysium.h ../hle_os.c | $(B)
+	clang -O1 -Wall -Wno-unused-function -ffunction-sections -fdata-sections -Wl,-dead_strip -I.. -o $@ t_elysium_min.c ../hle_os.c
+$(B)/t_potions: t_potions.c t_potions_drink.c ../dm_qol.c ../hle_os.c | $(B)
 	clang -O1 -Wall -Wno-unused-function -ffunction-sections -fdata-sections -Wl,-dead_strip -I.. -o $@ t_potions.c t_potions_drink.c ../hle_os.c
 $(B)/t_gamble: t_gamble.c ../dm_rift.c ../dm_rift.h ../hle_os.c ../hle.h ../dm.h | $(B)
 	clang -O1 -Wall -Wno-unused-function -ffunction-sections -fdata-sections -Wl,-dead_strip -I.. -o $@ t_gamble.c ../hle_os.c

@@ -221,129 +221,7 @@ static void a_send(uint8_t *b, uint64_t root, uint64_t cat, uint64_t act, int32_
     static int32_t payload[4]; static uint64_t msg[8]; payload[0] = p0; payload[1] = p1; memset(msg, 0, sizeof msg); msg[0] = cat; msg[1] = act; msg[2] = (uint64_t)(uintptr_t)payload;
     (void)b; ((void (*)(uint64_t, void *))*(uint64_t *)(*(uint64_t *)root + 0x28))(root, msg);
 }
-// 自动喝药：生命按两档（见下面 ap_life_pick：低于 90% 红药、低于 30% 紫药，没有紫药再喝一瓶红药），法力严格低于同一个百分数（缺省 90%）喝蓝药（mp1–mp5）——先背包（页 0）、背包没有再腰带，城里也喝。
-// 生命 / 法力读游戏自己的取属性函数 main+0x5b9290(单位, 属性号, 0)（含装备 / 护身符加成，角色页同口径），6 / 7 生命、8 / 9 法力，定点 ×256。
-// 喝走 g_use 那条原版路径（腰带格分支 0x2cecf0 / 背包 0x3c0098，都自己组 0x26 包），不模拟点击。
-// 不连喝：以游戏自己的「药效还在」为准，药效没了才再判——
-//   法力：属性 26 manarecovery（misc.txt mp* 的 stat1），喝下后下一拍起非 0，回满或到期归 0（本机 拍 31 喝 → 拍 32 起 = 100 → 拍 52 回满归 0）；
-//   生命：状态 100 healthpot（misc.txt hp* 的 state）。不用它的属性 74 hpregen：装备的「生命回复」也记在 74 上，戴着就一直非 0。
-//   状态位：[单位+0x88] 属性表（+0x1c 最高位 = 扩展表）+0xb30 起按 状态号 / 32 一个字的位图（游戏自己读法见 main+0x6240f4，置位见 0x5bd510）。
-// 发出喝药后等药效出现，1 秒（25 拍）没出现算这次没喝成，再按数值重判。两种同时低时先喝红。
-// 开关：「自定义」设置 auto_mana（dm_custom.c，键名沿用只管蓝药时的旧名，现管红蓝两种），缺省开
-// Auto potion: life uses two tiers (see ap_life_pick below: red potion below 90%, purple potion below 30%, one more red potion if there is no purple), mana strictly below the same percent (default 90%) drinks a blue potion (mp1–mp5) -- inventory first (page 0), and the belt if the inventory has none; also drinks in town.
-// Life / mana are read with the game's own stat getter function main+0x5b9290(unit, stat id, 0) (including equipment / charm bonuses, same definition as the character page), 6 / 7 life, 8 / 9 mana, fixed point ×256.
-// Drinking goes through the original g_use path (belt-cell branch 0x2cecf0 / inventory 0x3c0098, both build the 0x26 packet themselves), no click simulation.
-// No chain drinking: the game's own "potion effect still active" is authoritative, and it is judged again only after the effect is gone --
-//   mana: stat 26 manarecovery (stat1 of mp* in misc.txt), non-zero from the tick after drinking, back to 0 when full or expired (on this machine: drink at tick 31 → = 100 from tick 32 → full and back to 0 at tick 52);
-//   life: state 100 healthpot (state of hp* in misc.txt). Its stat 74 hpregen is not used: the "life regeneration" of equipment is also recorded on 74, so it stays non-zero as long as such gear is worn.
-//   State bits: [unit+0x88] stat table (top bit of +0x1c = extended table), a bitmap from +0xb30 with one word per state id / 32 (for how the game itself reads it see main+0x6240f4, for setting see 0x5bd510).
-// After a drink is sent, wait for the effect to appear; if it has not appeared within 1 second (25 ticks) this drink counts as failed, and it is judged again by the values. When both are low, red is drunk first.
-// Switch: the 「自定义」(Custom) setting auto_mana (dm_custom.c; the key name keeps the old name from when it only handled blue potions and now covers both red and blue), on by default
 uint32_t dm_cur_tick(void);
-static int a_has_state(uint64_t u, int st) {
-    uint64_t sl = *(uint64_t *)(u + 0x88); if (!sl || st < 0 || st > 0x1fe || !(*(uint32_t *)(sl + 0x1c) >> 31)) return 0;
-    return (*(uint32_t *)(sl + 0xb30 + 4 * (uint64_t)(st >> 5)) >> (st & 31)) & 1;
-}
-// 生命两档（人物与佣兵同一套）：低于 90% 喝红药（药效在就不喝，不连灌）；低于 30% 喝紫药（瞬回，没有药效状态：喝完 1 秒仍低于 30% 才再喝），
-// 没有紫药就再喝一瓶红药——这一瓶不受「药效还在」挡，但每次掉到 30% 以下只放行一瓶，之后回到「药效没了才喝」，回到 30% 以上重新计（挨打时不把红药灌光）。
-// 生命和法力共用一个百分数：DM_AUTOPOT_PCT（缺省 90；没设时沿用旧名 DM_AUTOPOT_RED）。紫药仍是 DM_AUTOPOT_REJUV（缺省 30）。正好等于阈值不喝。每次现读环境变量，不缓存。
-// The two life tiers (the same set for the character and the mercenary): below 90% drink a red potion (not while its effect is active, no chain drinking); below 30% drink a purple potion (instant, with no effect state: drink again only if still below 30% 1 second after drinking),
-// and with no purple potion drink one more red potion -- this one is not blocked by "effect still active", but only one is let through per drop below 30%; after that it goes back to "drink only once the effect is gone", and the count restarts once life is back above 30% (so the red potions are not all poured down while taking hits).
-// Life and mana share one percent: DM_AUTOPOT_PCT (default 90; the old name DM_AUTOPOT_RED is used when that is unset). Rejuvenation stays DM_AUTOPOT_REJUV (default 30). Exactly the threshold does not drink. The environment is read on each call and is not cached.
-static int ap_env_pct(const char *name, int def) { const char *e = getenv(name); if (!e || !e[0]) return def; int v = atoi(e); return v > 0 && v <= 100 ? v : def; }
-static int ap_pct(int which) {   // 0 = 生命和法力共用 | 0 = the percent shared by life and mana
-    if (which == 1) return ap_env_pct("DM_AUTOPOT_REJUV", 30);
-    const char *e = getenv("DM_AUTOPOT_PCT"); if (e && e[0]) return ap_env_pct("DM_AUTOPOT_PCT", 90);
-    return ap_env_pct("DM_AUTOPOT_RED", 90);
-}
-int dm_autopot_pct(void) { return ap_pct(0); }
-static int ap_below(int v, int mx, int pct) { return mx > 0 && v >= 0 && (long long)v * 100 < (long long)mx * pct; }   // 严格小于。正好 pct% 不喝 | Strictly below. Exactly pct% does not drink
-// which 0 生命 / 1 法力。返回 0 不喝、1 红药、2 蓝药、3 紫药。生命先看 30% 紫药，再看共用百分数的红药。法力只看共用百分数。
-// which 0 life / 1 mana. Returns 0 no drink, 1 healing, 2 mana, 3 rejuvenation. Life checks the 30% rejuvenation tier first, then a healing potion at the shared percent. Mana uses only the shared percent.
-int dm_autopot_select(int which, int v, int mx) {
-    if (which == 1) return ap_below(v, mx, ap_pct(0)) ? 2 : 0;
-    if (ap_below(v, mx, ap_pct(1))) return 3;
-    if (ap_below(v, mx, ap_pct(0))) return 1;
-    return 0;
-}
-// 在玩家物品栏里找一瓶药：kind 0 红（hp1–hp5）/ 1 蓝（mp1–mp5）/ 2 紫（rvs / rvl）。先背包（页 0）、再腰带最下面一排（原版按腰带键喝的就是这一排）。返回物品 id，没有 = 0
-// Find a potion among the player's items: kind 0 red (hp1–hp5) / 1 blue (mp1–mp5) / 2 purple (rvs / rvl). Inventory first (page 0), then the bottom row of the belt (the row the original game drinks from when a belt key is pressed). Returns the item id, none = 0
-static uint32_t ap_find(uint8_t *b, uint64_t pl, int kind, uint32_t *ocode, int *in_bag) {
-    uint64_t inv = *(uint64_t *)(pl + 0x90), it = inv && *(uint32_t *)inv == 0x01020304 ? *(uint64_t *)(inv + 0x10) : 0; uint32_t bid = 0, iid = 0, brow = 99, bc = 0, ic = 0;
-    for (int k = 0; it && k < 512; k++) { uint64_t d = *(uint64_t *)(it + 0x10), pp = *(uint64_t *)(it + 0x38); if (!d) break;
-        uint32_t code = ((uint32_t (*)(uint64_t))(b + 0x570260))(it), cont = *(uint32_t *)(it + 0xc), c3 = code & 0xffffff; int c2 = code >> 16 & 0xff;
-        int ok = kind == 2 ? (c3 == 0x737672 || c3 == 0x6c7672) : ((code & 0xffff) == (kind ? 0x706du : 0x7068u) && c2 >= '1' && c2 <= '5');   // "rvs" / "rvl"；"hp" / "mp" + 1–5
-        if (ok) { if (cont == 2 && pp && *(uint32_t *)(pp + 0x14) < brow) { brow = *(uint32_t *)(pp + 0x14); bid = *(uint32_t *)(it + 8); bc = code; }
-                  else if (cont == 0 && *(uint8_t *)(d + 0x55) == 0 && !iid) { iid = *(uint32_t *)(it + 8); ic = code; } }
-        it = *(uint64_t *)(d + 0xb0); }
-    *ocode = iid ? ic : bc; *in_bag = iid != 0; return iid ? iid : bid;
-}
-typedef struct { uint32_t last; int warned, extra; } ap_life;   // last：上次发出的拍；extra：这次掉到 30% 以下已经放行过那一瓶不看药效的红药 | last: the tick of the last send; extra: on this drop below 30%, the one red potion that ignores the potion effect has already been let through
-// 按生命两档挑药。v / mx 生命与上限，healing = 红药药效还在。返回要用的物品 id（0 = 这一拍不喝），*why 给日志
-// Pick a potion by the two life tiers. v / mx are life and its maximum, healing = the red potion effect is still active. Returns the id of the item to use (0 = no drink on this tick); *why is for the log
-static uint32_t ap_life_pick(uint8_t *b, uint64_t pl, ap_life *s, int v, int mx, int healing, uint32_t t, uint32_t *code, int *in_bag, const char **why) {
-    if (mx <= 0 || v <= 0) return 0;
-    int sel = dm_autopot_select(0, v, mx), low = sel == 3;   // 0 不喝、1 红药、3 紫药。和法力共用 dm_autopot_select 这一个百分数 | 0 no drink, 1 healing, 3 rejuvenation. Shares the one percent in dm_autopot_select with mana
-    if (!low) s->extra = 0;
-    if (!sel) { s->warned = 0; if (healing) s->last = 0; return 0; }
-    if (s->last && t >= s->last && t - s->last < 25) return 0;   // 刚发过一瓶：等 1 秒（红药等药效出现、紫药等生命跳上去） | one was just sent: wait 1 second (for a red potion, until the effect appears; for a purple potion, until life jumps up)
-    if (low) { uint32_t id = ap_find(b, pl, 2, code, in_bag); if (id) { *why = "紫药"; return id; }
-        if (healing && s->extra) return 0;   // 没有紫药、那一瓶额外的红已经喝过：等药效没了 | no purple potion and the one extra red has already been drunk: wait for the potion effect to end
-        id = ap_find(b, pl, 0, code, in_bag); if (id) { if (healing) s->extra = 1; *why = healing ? "没有紫药，再喝一瓶红药" : "没有紫药，喝红药"; return id; }
-        if (!s->warned) { s->warned = 1; *why = "没药"; } return 0; }
-    if (healing) return 0;   // 生命档：药效还在不再喝 | life tier: do not drink again while the potion effect is still active
-    { uint32_t id = ap_find(b, pl, 0, code, in_bag); if (id) { *why = "红药"; return id; } if (!s->warned) { s->warned = 1; *why = "没药"; } return 0; }
-}
-static int auto_pot_life(uint8_t *b, uint64_t pl, uint32_t t) {   // 人物生命；返回 1 = 这一拍发了喝药 | character life; returns 1 = a drink was sent on this tick
-    static ap_life s; int (*gs)(uint64_t, int, int) = (void *)(b + 0x5b9290); int v = gs(pl, 6, 0) >> 8, mx = gs(pl, 7, 0) >> 8, bag = 0; uint32_t code = 0; const char *why = NULL;
-    uint32_t id = ap_life_pick(b, pl, &s, v, mx, a_has_state(pl, 100), t, &code, &bag, &why);
-    if (!id) { if (why) LOG("自动喝药：生命 %d/%d 低于 %d%%，背包和腰带里都没有可喝的生命药水", v, mx, ap_pct(0)); return 0; }
-    atomic_store(&g_use, id); s.last = t; s.warned = 0;
-    LOG("自动喝药：拍 %u 生命 %d/%d（%d%%）→ %s：喝%s的 %.3s（id %u）", t, v, mx, (int)((long long)v * 100 / mx), why, bag ? "背包" : "腰带", (const char *)&code, id);
-    return 1;
-}
-static int auto_pot_mana(uint8_t *b, uint64_t pl, uint32_t t) {   // 法力：严格低于和生命同一个百分数（缺省 90%）喝蓝药，药效（属性 26）在就不喝；返回 1 = 这一拍发了喝药 | mana: strictly below the same percent as life (default 90%) drinks a blue potion, not while the potion effect (stat 26) is present; returns 1 = a drink was sent on this tick
-    static uint32_t last; static int warned; int (*gs)(uint64_t, int, int) = (void *)(b + 0x5b9290);
-    if (gs(pl, 26, 0)) { last = 0; return 0; }
-    if (last && t >= last && t - last < 25) return 0;
-    int v = gs(pl, 8, 0) >> 8, mx = gs(pl, 9, 0) >> 8, bag = 0; uint32_t code = 0;
-    if (dm_autopot_select(1, v, mx) != 2) { warned = 0; return 0; }
-    uint32_t id = ap_find(b, pl, 1, &code, &bag);
-    if (!id) { if (!warned) { warned = 1; LOG("自动喝药：法力 %d/%d 低于 %d%%，背包和腰带里都没有法力药水", v, mx, ap_pct(0)); } return 0; }
-    atomic_store(&g_use, id); last = t; warned = 0;
-    LOG("自动喝药：拍 %u 法力 %d/%d 低于 %d%% → 喝%s的 %.3s（id %u）", t, v, mx, ap_pct(0), bag ? "背包" : "腰带", (const char *)&code, id);
-    return 1;
-}
-// 佣兵自动喂药：同上面的生命两档；玩家自己生命低于 30% 那一档时先不喂（药先紧着玩家）。
-// 走现成的喂佣兵路径（g_use + g_use_merc，同腰带双击：原版自己判这瓶能不能喂、目标 = 佣兵单位）。开关：「自定义」设置 merc_pot，缺省关（会多耗玩家的药）。
-// 佣兵单位 id = [0x2d33528] 链表里类型 7、属主 = 玩家、[+0x20] == 0 的那条（同下面喂佣兵处）；生命与药效读服务端那只的真值（diag.c dm_diag_srv_merc）——
-// 客户端那只的生命是服务端发来的比例，进局头两百多拍没发过、是没初始化的值，不能拿来决定消耗玩家的药
-// Mercenary auto-feed potions: the same two life tiers as above; while the player's own life is in the below-30% tier, do not feed yet (potions go to the player first).
-// Goes through the existing feed-mercenary path (g_use + g_use_merc, same as the belt double-tap: the original game itself judges whether this potion can be fed, target = the mercenary unit). Switch: the 「自定义」(Custom) setting merc_pot, off by default (it uses up more of the player's potions).
-// Mercenary unit id = the entry in the [0x2d33528] linked list with type 7, owner = the player, and [+0x20] == 0 (same as the feed-mercenary code below); life and potion effect are read from the true values of the server-side one (diag.c dm_diag_srv_merc) --
-// the client-side one's life is a ratio sent by the server, which has not been sent during the first two-hundred-odd ticks after joining a game and is an uninitialized value, so it must not be used to decide to consume the player's potions
-static int auto_merc_pot(uint8_t *b, uint64_t pl, uint32_t t) {
-    static int env = -2; if (env == -2) { const char *e = getenv("DM_MERC_POT"); env = e ? e[0] != '0' : -1; }   // 测试强制：DM_MERC_POT=0 关 / 其余开，优先于自定义页 | Test override: DM_MERC_POT=0 off / anything else on, takes priority over the Custom page
-    if (!(env >= 0 ? env : dm_custom_get("merc_pot"))) return 0;
-    static ap_life s; int (*gs)(uint64_t, int, int) = (void *)(b + 0x5b9290);
-    { int v = gs(pl, 6, 0), mx = gs(pl, 7, 0); if (mx <= 0 || (long long)v * 100 < (long long)mx * ap_pct(1)) return 0; }   // 玩家自己缺血：药先紧着玩家 | The player is low on life: potions go to the player first
-    uint32_t mid = 0xffffffffu; for (uint64_t e = *(uint64_t *)(b + 0x2d33528); e; e = *(uint64_t *)(e + 0x30)) if (*(uint32_t *)(e + 4) == 7 && *(uint32_t *)(e + 0xc) == *(uint32_t *)(pl + 8) && !*(uint32_t *)(e + 0x20)) { mid = *(uint32_t *)(e + 8); break; }
-    int dm_diag_srv_merc(uint32_t id, int *hp, int *mx, int *healing); int v = 0, mx = 0, healing = 0, bag = 0; uint32_t code = 0; const char *why = NULL;
-    if (mid == 0xffffffffu || !dm_diag_srv_merc(mid, &v, &mx, &healing)) return 0;   // 没有佣兵 / 死了 / 服务端没有这只 | No mercenary / dead / the server has no such unit
-    uint32_t id = ap_life_pick(b, pl, &s, v, mx, healing, t, &code, &bag, &why);
-    if (!id) { if (why) LOG("佣兵自动喂药：佣兵生命 %d%% 低于 %d%%，背包和腰带里都没有可喂的生命药水", (int)((long long)v * 100 / mx), ap_pct(0)); return 0; }
-    atomic_store(&g_use_merc, 1); atomic_store(&g_use, id); s.last = t; s.warned = 0;
-    LOG("佣兵自动喂药：拍 %u 佣兵（id %u）生命 %d/%d（%d%%）→ %s：喂%s的 %.3s（id %u）", t, mid, v, mx, (int)((long long)v * 100 / mx), why, bag ? "背包" : "腰带", (const char *)&code, id);
-    return 1;
-}
-static void auto_pot_pump(uint8_t *b, uint64_t pl) {
-    if (!pl) return;
-    uint32_t t = dm_cur_tick(); if (!t) return;
-    uint32_t mode = *(uint32_t *)(pl + 0xc); if (mode == 0 || mode == 17 || mode == 0x11) return;   // 死亡中 / 已死 / 玩家状态不允许用物品（同 g_use 的挡法） | Dying / dead / the player state does not allow using items (same blocking as g_use)
-    if (((uint64_t (*)(void))(b + 0x2aa7c0))() || atomic_load(&g_use)) return;   // 手上拿着东西 / 已有一件在等着用 | Holding something in hand / one item is already waiting to be used
-    if (dm_custom_get("auto_mana") && (auto_pot_life(b, pl, t) || auto_pot_mana(b, pl, t))) return;   // 一拍只发一件（g_use 一次一件），先红后蓝 | Only one is sent per tick (g_use handles one at a time), red first, then blue
-    auto_merc_pot(b, pl, t);   // 玩家这一拍没喝药才轮到佣兵 | The mercenary only gets a turn if the player did not drink a potion this tick
-}
 // ---------- 副手组技能一键放 ----------
 // 两组武器共用一张原版绑定表（main+0x2d5f0c0，每格 28 字节：+0 技能号、+4 物品 id，-1 = 自己学的；「切换武器时更换技能键」选项关着时只用前 12 格）。
 // 在 II 组绑的充能技能（物品给的），切回 I 组后那件物品还穿在身上（换手位），技能链表里却没有这个节点，原版按了不放。
@@ -758,7 +636,7 @@ void dm_actions_pump(void) {
     // measured: no goods deducted, no gold deducted, the shelf cell still there (blocking here first used to leave the player with no on-screen feedback at all after a drag-to-buy). can_buy is only a reading
     if (atomic_exchange(&g_buy, 0)) { int r = !sel ? -1 : trade(pl, sel, 0, 0, 1, 0); LOG("商人：买选中的货 id %u（%s，货架格 %d,%d 占 %dx%d，价 %d，身上 %d + 箱内 %d）→ %d（1 已发、-1 没选中）", s.sel_id, s.sel_code, s.sel_gx, s.sel_gy, s.sel_gw, s.sel_gh, s.buy_price, s.gold, s.stash_gold, r); }
     if (atomic_exchange(&g_sell, 0)) { int r = held && s.sell_price > 0 ? trade(pl, held, 1, 0, 1, 0) : -1; LOG("商人：卖手上的物品 id %u（卖价 %d，身上 %d）→ %d", s.held_id, s.sell_price, s.gold, r); }
-    { void dm_qol_vendor_pump(uint8_t *); dm_qol_vendor_pump(b); }   // 打开交易商人：自动卖掉背包杂物，会修的接着修（dm_qol.c）。排在玩家拖过去卖的后面，同一帧先让玩家卖掉手上的 | Opening a trade vendor: sell junk in the inventory, then repair at a vendor that repairs (dm_qol.c). Placed after a drag-to-sell, so the player's own sale on this frame goes first
+    { void dm_qol_vendor_pump(uint8_t *); dm_qol_vendor_pump(b); }   // 极乐：交易商人开着时卖掉背包杂物，不自动修理（dm_qol.c）。排在玩家自己卖的后面 | Elysium: while a trade vendor is open, sell junk in the inventory; do not auto-repair (dm_qol.c). After the player's own sale
     // 放进腰带：main+0x3c1cd0(物品, 玩家, 来源页, 1 = 从背包格直接移, {槽, 已定槽 = 0})——手柄版背包格上「移到腰带」调的同一个（0x3cbff0–0x3cc014），
     // 它自己找腰带空位、发 0x53 包；前置同原版：main+0x3c1b28(物品) = 类型可放腰带且此刻有位，不满足就不动（腰带满时物品原地不动）
     // 测试动作：对背包（页 0）里第一瓶药水调 dm_belt_put（物品 id 每局不同，脚本里写不死）
@@ -817,7 +695,7 @@ void dm_actions_pump(void) {
                 while (l < 32 && sscanf(c, "%2x", &v) == 1 && c[0] != ';' && c[1] != ';' && c[1]) { q[n].pk[l++] = (uint8_t)v; c += 2; } q[n].len = l; n++; e = strchr(c, ';'); if (e) e++; } }
         uint64_t f = dm_guest_frame(); for (int i = 0; pl && i < n; i++) if (q[i].at && f >= q[i].at) { q[i].at = 0; ((void (*)(const uint8_t *, int))(b + 0x2ceab0))(q[i].pk, q[i].len); LOG("测试 DM_TEST_C2S：帧 %llu 发包 %02x（长 %d）", (unsigned long long)f, q[i].pk[0], q[i].len); } }
     { void dm_freetp_client_step(uint8_t *, uint64_t); DM_PROF(0, "a.freetp_client", dm_freetp_client_step(b, pl)); }   // 免费回城：客户端玩家挂回城技能、读 ZR 那格空不空 | Free town portal: attach the town portal skill to the client player and read whether the ZR slot is empty
-    dm_custom_ui_pump(root); DM_PROF(0, "a.auto_pot", auto_pot_pump(b, pl)); DM_PROF(0, "a.swapskill", swapskill_pump(b, pl)); { void dm_kills_ui_pump(void); DM_PROF(0, "a.kills_ui", dm_kills_ui_pump()); } { void dm_rift_ui_pump(void); DM_PROF(0, "a.rift_ui", dm_rift_ui_pump()); } { void dm_vault_ui_pump(void); DM_PROF(0, "a.vault_ui", dm_vault_ui_pump()); }
+    dm_custom_ui_pump(root); DM_PROF(0, "a.swapskill", swapskill_pump(b, pl)); { void dm_kills_ui_pump(void); DM_PROF(0, "a.kills_ui", dm_kills_ui_pump()); } { void dm_rift_ui_pump(void); DM_PROF(0, "a.rift_ui", dm_rift_ui_pump()); } { void dm_vault_ui_pump(void); DM_PROF(0, "a.vault_ui", dm_vault_ui_pump()); }
     uint32_t use = atomic_exchange(&g_use, 0); int force_merc = use ? atomic_exchange(&g_use_merc, 0) : 0;
     if (use && pl) { uint64_t it = ((uint64_t (*)(uint64_t, uint32_t, uint32_t, uint32_t))(b + 0x45f5f0))((uint64_t)(uintptr_t)(b + 0x2d603a0 + 4 * 0x400), use & 0x7f, use, 4);
         int busy = *(uint32_t *)(pl + 0xc) == 0x11 || ((uint64_t (*)(void))(b + 0x2aa7c0))() != 0, can = it && !busy && (((int (*)(uint64_t, int))(b + 0x3bff70))(it, 3) & 1);

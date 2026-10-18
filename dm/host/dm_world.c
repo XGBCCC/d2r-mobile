@@ -673,9 +673,9 @@ void dm_world_pump(void) {   // 取手柄处每帧调 | Called every frame at th
     uint8_t *b = wb(); if (!b) return;
     if (g_it.active) w_interaction_poll(w_player(), dm_guest_frame());
     DM_PROF(0, "w.watch", w_watch_step(b));
-    { void dm_potpick_step(uint8_t *); DM_PROF(0, "w.potpick", dm_potpick_step(b)); }   // 金币自动拾取，以及掉落过滤 / 整理重试的每帧入口（dm_potpick.c） | gold auto-pickup, and the per-frame entry for the loot filter / sort retry (dm_potpick.c)
+    { void dm_potpick_step(uint8_t *); DM_PROF(0, "w.potpick", dm_potpick_step(b)); }   // 掉落过滤、增益自动补，以及极乐客户端锁血锁蓝的每帧入口（dm_potpick.c） | per-frame entry for the loot filter, buff recast, and the client Elysium life/mana hold (dm_potpick.c)
     { void dm_padmode_step(uint8_t *, uint64_t); DM_PROF(0, "w.padmode", dm_padmode_step(b, dm_guest_frame())); }   // 手柄 / 触屏布局切换（dm_padmode.c） | Controller / touch layout switching (dm_padmode.c)
-    { void dm_beltauto_step(uint8_t *); DM_PROF(0, "w.beltauto", dm_beltauto_step(b)); }   // 开背包自动补腰带（dm_beltauto.c） | Auto-refill the belt when the inventory opens (dm_beltauto.c)
+    { void dm_beltauto_step(uint8_t *); DM_PROF(0, "w.beltauto", dm_beltauto_step(b)); }   // 开背包不再自动补腰带；测试喝药开关仍在（dm_beltauto.c） | Opening the inventory no longer refills the belt; the test drink switch remains (dm_beltauto.c)
     { void dm_pouch_step(uint8_t *); DM_PROF(0, "w.pouch", dm_pouch_step(b)); }   // 百宝囊 / 存放（dm_pouch.c） | pouch / deposit (dm_pouch.c)
     if (g_release_at && dm_guest_frame() >= g_release_at) { g_release_at = 0; uint64_t pl = w_player(); if (pl) { atomic_store(&g_dm_move_allow_until_ns, w_now_ns() + 500000000ull); ((int (*)(uint64_t, int, int, int, uint64_t))(b + 0x4ace20))(pl, 2, g_rel_x, g_rel_y, 0); } }
     DM_PROF(0, "w.go", w_go_step());

@@ -226,7 +226,7 @@ void dm_rift_ui_pump(void) {
         if (hx < 100) snprintf(t, sizeof t, "×%d.%d", hx / 10, hx % 10); else snprintf(t, sizeof t, "×%d", (hx + 5) / 10); text(find(bw, "TouchRF_Str", 0), t);
         if (lv) snprintf(t, sizeof t, "%d", lv); else snprintf(t, sizeof t, "%s", dm_str(rb(), "dmRiftLvlBase")); text(find(bw, "TouchRF_Lvl", 0), t);
         text(find(bw, "TouchRF_Time", 0), "15:00");
-        uint32_t gu, gs, nu, ns; dm_gamble_rates(2, m.best, 1, &gu, &gs); dm_gamble_rates(2, g_sel, 1, &nu, &ns);   // 安亚在哈洛加斯：当前和下层都走同一个赌博概率（至少 10% / 20%，秘境加成更高时用更高的） | Anya is in Harrogath: current and the next level both use the same gamble rates (at least 10% / 20%; a higher rift bonus is used when it is higher)
+        uint32_t gu = 0, gs = 0, nu = 0, ns = 0; extern int dm_elysium_active(void); int ely = dm_elysium_active(); dm_gamble_rates(ely, 2, m.best, 1, &gu, &gs); dm_gamble_rates(ely, 2, g_sel, 1, &nu, &ns);   // 极乐才显示 10% / 20% 这个底。秘境加成更高时用更高的。非极乐不写、这里也不显示这个底 | The 10% / 20% floor is shown only in Elysium. A higher rift bonus is used when it is higher. Outside Elysium this floor is not written and is not shown here
         // 四行：暗金 / 套装（当前，没通关过也是 10% / 20%，不会显示 0）；所选层高于最高通关再加「通关后暗金 / 通关后套装」
         // Four rows: unique / set (current; with no clear yet this is still 10% / 20%, not 0); if the selected level is above the highest clear, add 「通关后暗金 / 通关后套装」(unique after clear / set after clear)
         char ln[4][3][40]; memset(ln, 0, sizeof ln); int r = 0;
@@ -235,8 +235,8 @@ void dm_rift_ui_pump(void) {
         // English (do not force "Unique after / Set after"): the two "after clearing" rows become one small heading "After This Level" plus one row with two
         // numbers side by side (gold = Unique, green = Set, same colors as the two rows above)
         int pair = -1;
-        if ((!gu || g_sel > m.best) && en) { snprintf(ln[r++][0], 40, "%s", dm_str(rb(), "dmRiftGamAfterEn")); pair = r; snprintf(ln[r][1], 40, "%u.%u%%", nu / 1000, nu / 100 % 10); snprintf(ln[r++][2], 40, "%u.%u%%", ns / 1000, ns / 100 % 10); }
-        else if (!gu || g_sel > m.best) { snprintf(ln[r][0], 40, "%s", dm_str(rb(), "dmRiftGamUniAfter")); snprintf(ln[r++][1], 40, "%u.%u%%", nu / 1000, nu / 100 % 10); snprintf(ln[r][0], 40, "%s", dm_str(rb(), "dmRiftGamSetAfter")); snprintf(ln[r++][2], 40, "%u.%u%%", ns / 1000, ns / 100 % 10); }
+        if ((nu || ns) && (!gu || g_sel > m.best) && en) { snprintf(ln[r++][0], 40, "%s", dm_str(rb(), "dmRiftGamAfterEn")); pair = r; snprintf(ln[r][1], 40, "%u.%u%%", nu / 1000, nu / 100 % 10); snprintf(ln[r++][2], 40, "%u.%u%%", ns / 1000, ns / 100 % 10); }
+        else if ((nu || ns) && (!gu || g_sel > m.best)) { snprintf(ln[r][0], 40, "%s", dm_str(rb(), "dmRiftGamUniAfter")); snprintf(ln[r++][1], 40, "%u.%u%%", nu / 1000, nu / 100 % 10); snprintf(ln[r][0], 40, "%s", dm_str(rb(), "dmRiftGamSetAfter")); snprintf(ln[r++][2], 40, "%u.%u%%", ns / 1000, ns / 100 % 10); }
         g_pair = pair;
         for (int k = 0; k < 4; k++) for (int c = 0; c < 3; c++) { char nm[24]; snprintf(nm, sizeof nm, "TouchRF_Gam%d%s", k, c == 0 ? (en ? "LE" : "L") : c == 1 ? "U" : "S"); text(find(bw, nm, 0), ln[k][c]); }   // 标签写进当前语言用的那个控件（另一个在屏外） | the label is written into the widget used for the current language (the other one is off screen)
     }

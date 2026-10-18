@@ -109,13 +109,7 @@ void dm_beltauto_step(uint8_t *b) {   // 游戏主线程每帧（dm_world.c） |
               if (*q == '0' && (D.best[RED] || D.best[BLUE])) { ((void (*)(uint64_t, int))(b + 0x3c0098))(D.best[RED] ? D.best[RED] : D.best[BLUE], 3); any = 1; break; }   // 0 = 背包里的红 / 蓝也喝掉（原版背包格使用物品，同 dm_actions.c） | 0 = also drink up the red / blue ones in the inventory (the original game's inventory cell item use, same as dm_actions.c)
               if (c >= 0 && c < 4 && D.belt[c]) { dm_belt_use(c, 0); any = 1; break; } }
           if (!any) { st = 2; LOG("DM_TEST_BELT_DRINK：第 %s 列喝空了（帧 %llu）", cols, (unsigned long long)f); } } }
-    if (atomic_exchange(&g_req, 0)) {
-        static int env = -2; if (env == -2) { const char *e = getenv("DM_POT_PICK"); env = e ? e[0] != '0' : -1; }
-        int dm_beltfill_on(void);
-        if (env == 0) { static int n; if (n++ < 3) LOG("开背包补腰带：DM_POT_PICK=0，不动"); }   // 界面测试要自己验双击补满 | the UI test checks double-tap fill itself
-        else if (dm_beltfill_on()) { static int n; if (n++ < 3) LOG("开背包补腰带：红蓝由难度补药接管，不从背包搬"); }
-        else { active = 1; moves = 0; want_slot = -1; next = 0; deadline = 0; g_ntried = 0; fails = 0; }   // 开关关着：仍从背包补 | switch off: still refill from the inventory
-    }
+    if (atomic_exchange(&g_req, 0)) { static int n; if (n++ < 3) LOG("开背包补腰带：极乐改为锁血锁蓝，不再从背包搬药"); }   // 请求吞掉。active 不再置位，下面的搬运不会开始 | Swallow the request. active is not set, so the move below does not start
     if (!active) return;
     uint64_t fr = dm_guest_frame(); if (fr < next) return;
     uint64_t pl = ((uint64_t (*)(uint32_t))(b + 0x45f9d0))(*(uint32_t *)(uintptr_t)(b + 0x2d20e4c)); snap S; char t[160];

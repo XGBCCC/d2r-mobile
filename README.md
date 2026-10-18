@@ -141,14 +141,14 @@ Enter through the red portal in Harrogath after completing Hell. There are 100 l
 | | |
 |---|---|
 | Auto-recast buffs | Buff skills you have learned do not need a slot on the skill bar: when a buff runs out, it is recast the moment you stand still; buffs that come from your secondary weapons (such as Battle Orders from Call to Arms) swap weapons, recast and swap back on their own |
-| Potions and belt | Auto-drink has two tiers: a healing potion below 90% Life and a mana potion below 90% Mana, and a rejuvenation potion below 30% Life; **your mercenary is fed automatically by the same life rule**. Healing and mana stay at the best tier this difficulty's vendors sell, and refill as soon as one is drunk; a bottle already in the belt stays until it is drunk. On Hell one column is full rejuvenation, refilled when you trade in town. Red, blue and purple potions on the ground are not picked up. Double-tap an empty belt slot still refills from the inventory |
-| Gambling | On Normal, Nightmare and Hell, unique is 10% and set is 20%. A higher Harrogath rift bonus stays higher. Class-specific equipment can be gambled |
-| Loot filter | From Normal on, the original loot filter is switched on automatically: light filtering on Normal and Nightmare, heavy on Hell. Healing, mana and rejuvenation potions on the ground are hidden |
-| Auto-pickup | Low runes and gems go straight into the Pouch; the high ones are left for you to pick up yourself. Gold piles nearby are picked up automatically |
+| Potions and belt | In an Elysium run, current life and current mana stay at their maxima, so an empty belt does not drop them. A character who is not in Elysium is not locked, refilled, or auto-drunk. Double-tap an empty belt slot still refills from the inventory |
+| Gambling | Only in an Elysium run: on Normal, Nightmare and Hell, unique is 10%, set is 20%. A higher Harrogath rift bonus stays higher. Bases the shelf already listed stay, including daggers and staves, and class-specific bases are added. A non-Elysium run keeps the game's own rates and shelf |
+| Loot filter | From Normal on, the original loot filter is switched on automatically: light filtering on Normal and Nightmare, heavy on Hell. Potions on the ground stay visible |
+| Auto-pickup | Low runes and gems go straight into the Pouch; the high ones are left for you to pick up yourself |
 | Valuable drop alerts | High runes and Unique items raise a light beam and land with a different drop sound; the phone vibrates at one of three strengths — light, medium or heavy — according to value |
 | Runeword helper | Long-press a socketed base to list the Runewords it can make and their stats; once you have the runes, socket them all in one tap |
 | Minimap guidance | Every map marks its Waypoint and exits; every quest goal is on the map; when a target is off screen, its name is written along the screen edge |
-| Chores removed | Free identification, free Town Portal with no scrolls needed, spawning right beside the Waypoint, Quick Restart, refreshable vendor stock. Opening a vendor sells white, low-quality, superior and magic gear, and a vendor that repairs then repairs; a pickup that does not fit sorts the inventory once and tries again |
+| Chores removed | Free identification, free Town Portal with no scrolls needed, spawning right beside the Waypoint, Quick Restart, refreshable vendor stock. In an Elysium run, equipped durability does not drop, a gold cost does not reduce carried or stash gold, gold piles are picked up, and junk in the inventory is sold at a trade vendor. A long-press on an empty cell still sorts |
 | Saves | Saved immediately when you switch apps, swipe the app away or quit; iCloud sync across devices (requires signing with a paid developer account) |
 
 Most features can be toggled one by one in game under Options → Custom.

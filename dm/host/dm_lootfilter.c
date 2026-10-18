@@ -42,18 +42,17 @@
 #define T_MISSILE 47   // 物品类型表行号：miss（弓、弩、亚马逊弓的父类型） | item type table row: miss (parent type of bows, crossbows, Amazon bows)
 int dm_diag_difficulty(void);
 
-// 轻筛、重筛都藏：精力 / 解毒 / 解冻药，全部红蓝药（hp1–hp5、mp1–mp5），小紫和满紫（rvs、rvl），回城与鉴定的卷轴和书，全部投掷药，低质量（破损 / 粗糙）装备，箭矢弩矢（没装弓弩时）。
+// 轻筛、重筛都藏：回城与鉴定的卷轴和书，低质量（破损 / 粗糙）装备，箭矢弩矢（没装弓弩时）。地上的药不藏。
 // 重筛再藏：普通档的白装（带孔 / 无形的留着，头环不分档整类留着）；普通档的蓝装（饰品、头环、各职业专属留着）。
-// 任何档都不藏：钥匙、暗金、套装、稀有、符文、宝石、护身符、珠宝、任务物品与各种材料、金币——规则里压根不提它们。
-// Lite and heavy both hide: Stamina / Antidote / Thawing potions, every Healing and Mana potion (hp1–hp5, mp1–mp5), small and full Rejuvenation (rvs, rvl), Town Portal and Identify scrolls and tomes, all throwing potions, low quality (Cracked / Crude) gear, arrows and bolts (when no bow or crossbow is equipped).
+// 任何档都不藏：药、钥匙、暗金、套装、稀有、符文、宝石、护身符、珠宝、任务物品与各种材料、金币——规则里压根不提它们。
+// Lite and heavy both hide: Town Portal and Identify scrolls and tomes, low quality (Cracked / Crude) gear, arrows and bolts (when no bow or crossbow is equipped). Potions on the ground are not hidden.
 // Heavy also hides: normal-tier white items (socketed / ethereal ones are kept, circlets have no tiers and are kept as a whole); normal-tier magic items (jewelry, circlets and class-specific items are kept).
-// Never hidden at any tier: keys, Unique, Set, Rare, runes, gems, charms, jewels, quest items and all kinds of materials, gold. The rules simply never mention them.
+// Never hidden at any tier: potions, keys, Unique, Set, Rare, runes, gems, charms, jewels, quest items and all kinds of materials, gold. The rules simply never mention them.
 static void write_fltr(const char *dir, const char *name, int heavy, int ammo) {
     char p[1300], t[1320]; snprintf(p, sizeof p, "%s/%s.fltr", dir, name); snprintf(t, sizeof t, "%s.tmp", p);
     FILE *f = fopen(t, "w"); if (!f) { LOG("【红】掉落过滤：规则文件写不了 %s", p); return; }
     fprintf(f, "{\n \"name\": \"%s\",\n \"rules\": [\n", name);
-    fprintf(f, "  {\"name\": \"HIDE consumables\", \"enabled\": true, \"ruleType\": \"hide\", \"filterEtherealSocketed\": false, \"itemCode\": [\"vps\", \"yps\", \"wms\", \"hp1\", \"hp2\", \"hp3\", \"hp4\", \"hp5\", \"mp1\", \"mp2\", \"mp3\", \"mp4\", \"mp5\", \"rvs\", \"rvl\", \"tsc\", \"isc\", \"tbk\", \"ibk\"]},\n");
-    fprintf(f, "  {\"name\": \"HIDE throwing potions\", \"enabled\": true, \"ruleType\": \"hide\", \"filterEtherealSocketed\": false, \"equipmentItemCode\": [\"gps\", \"gpm\", \"gpl\", \"ops\", \"opm\", \"opl\"]},\n");
+    fprintf(f, "  {\"name\": \"HIDE scrolls\", \"enabled\": true, \"ruleType\": \"hide\", \"filterEtherealSocketed\": false, \"itemCode\": [\"tsc\", \"isc\", \"tbk\", \"ibk\"]},\n");
     if (ammo) fprintf(f, "  {\"name\": \"HIDE ammo\", \"enabled\": true, \"ruleType\": \"hide\", \"filterEtherealSocketed\": false, \"itemCategory\": [\"ammo\"]},\n");
     if (heavy) {
         fprintf(f, "  {\"name\": \"SHOW socketed or ethereal\", \"enabled\": true, \"ruleType\": \"show\", \"filterEtherealSocketed\": true},\n");
