@@ -53,19 +53,21 @@ int main(void) {
         } else printf("gamble OK: rift bonus best %d stays %u/%u, equals dm_rift_gamble_vals, not clamped down\n", rift[i].best, u, s);
     }
 
-    if (!dm_gamble_shelf_eligible(1, 1, 0, 0, 1)) { fails++; printf("  x class item missing from the vanilla shelf was dropped\n"); }
+    if (!dm_gamble_shelf_eligible(1, 1, 0, 0, 1, 0)) { fails++; printf("  x class item missing from the vanilla shelf was dropped\n"); }
     else printf("gamble OK: elysium on, any class item stays even with no low unique and even when gambling did not list it\n");
-    if (dm_gamble_shelf_eligible(1, 0, 0, 0, 1)) { fails++; printf("  x non-class item absent from the vanilla shelf was added\n"); }
-    else printf("gamble OK: a non-class item that gambling did not list is not added\n");
-    if (!dm_gamble_shelf_eligible(1, 0, 1, 1, 1)) { fails++; printf("  x non-class item with a low unique was dropped\n"); }
+    if (dm_gamble_shelf_eligible(1, 0, 0, 0, 1, 0)) { fails++; printf("  x non-gear item absent from the vanilla shelf was added\n"); }
+    else printf("gamble OK: a non-gear item that gambling did not list is not added\n");
+    if (!dm_gamble_shelf_eligible(1, 0, 0, 0, 1, 1)) { fails++; printf("  x weapon or armor missing from the vanilla shelf was not added\n"); }
+    else printf("gamble OK: elysium on, a weapon or armor base gambling did not list is added\n");
+    if (!dm_gamble_shelf_eligible(1, 0, 1, 1, 1, 0)) { fails++; printf("  x non-class item with a low unique was dropped\n"); }
     else printf("gamble OK: a non-class item with a low unique stays\n");
-    if (!dm_gamble_shelf_eligible(1, 0, 1, 0, 1)) { fails++; printf("  x vanilla base with no low unique was dropped\n"); }
+    if (!dm_gamble_shelf_eligible(1, 0, 1, 0, 1, 0)) { fails++; printf("  x vanilla base with no low unique was dropped\n"); }
     else printf("gamble OK: elysium on, a vanilla base stays even with no low unique\n");
-    if (!dm_gamble_shelf_eligible(1, 0, 1, 0, 0)) { fails++; printf("  x non-class item dropped while the filter is off\n"); }
+    if (!dm_gamble_shelf_eligible(1, 0, 1, 0, 0, 0)) { fails++; printf("  x non-class item dropped while the filter is off\n"); }
     else printf("gamble OK: a non-class item stays when the filter is off\n");
-    if (dm_gamble_shelf_eligible(0, 1, 0, 0, 1)) { fails++; printf("  x elysium off inserted a class item\n"); }
-    else printf("gamble OK: elysium off does not insert a class-locked base\n");
-    if (!dm_gamble_shelf_eligible(0, 0, 1, 0, 1)) { fails++; printf("  x elysium off dropped a vanilla base under the unique filter\n"); }
+    if (dm_gamble_shelf_eligible(0, 1, 0, 0, 1, 1)) { fails++; printf("  x elysium off inserted a class item or a weapon\n"); }
+    else printf("gamble OK: elysium off does not insert a class-locked base or a weapon\n");
+    if (!dm_gamble_shelf_eligible(0, 0, 1, 0, 1, 0)) { fails++; printf("  x elysium off dropped a vanilla base under the unique filter\n"); }
     else printf("gamble OK: elysium off keeps a base the shelf already had\n");
 
     printf("t_gamble %s\n", fails ? "FAILED" : "OK");

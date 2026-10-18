@@ -214,11 +214,11 @@ static int pts_grant(uint64_t player) {   // 返回发了几份（0 = 没有该�
 //   In Harrogath, a rift bonus (dm_rift_gamble_vals: Hell unique 10% from clearing level 1, +0.1 percentage point per further level, set = unique × 2) that is already above this floor is kept and is not lowered.
 //   The original three difficulty values are remembered before the first write. They are written back when Elysium ends or the run changes. A non-Elysium run does not write this floor and does not insert class-specific shelf rows.
 void dm_rift_gamble_vals(int best, uint32_t *uniq, uint32_t *set) { if (best > 100) best = 100; *uniq = best >= 1 ? 10000u + 100u * (uint32_t)(best - 1) : 0; *set = *uniq * 2; }
-int dm_gamble_shelf_eligible(int elysium, int class_item, int on_vanilla, int has_low_unique, int unique_filter) {
-    (void)has_low_unique; (void)unique_filter;   // 极乐不再按「有没有低等级暗金」拿掉。匕首、法杖这类原来就在货架上的都留 | Elysium no longer drops a base for lacking a low-level unique. A dagger or staff the shelf already listed stays
+int dm_gamble_shelf_eligible(int elysium, int class_item, int on_vanilla, int has_low_unique, int unique_filter, int gear) {
+    (void)has_low_unique; (void)unique_filter;   // 不再按「有没有低等级暗金」决定留不留 | A base is no longer kept or dropped according to whether it has a low-level unique
     if (!elysium) return on_vanilla ? 1 : 0;   // 非极乐：原来在货架上的留着，不另补 | Not Elysium: a base the shelf already had stays. Nothing is inserted
-    if (class_item) return 1;   // 任一职业的专属底材：原来不在赌博表里也留 | A class-specific base of any class stays even when gambling did not list it
-    return on_vanilla ? 1 : 0;   // 非职业、原来不能赌的不另加（不把药水、任务物品整表塞进货架） | A non-class base gambling did not list is not added (potions and quest items are not dumped onto the shelf)
+    if (class_item || gear) return 1;   // 职业专属，或武器 / 护甲（匕首不在原版赌博表里，靠这一条补上） | A class-specific base, or a weapon / armor base (daggers are absent from the original gamble list and are added by this)
+    return on_vanilla ? 1 : 0;   // 戒指、护身符、药水这些，原来没列的不另加 | Rings, charms and potions that gambling did not list are not added
 }
 int dm_gamble_rates(int elysium, int diff, int best, int harrogath, uint32_t *uniq, uint32_t *set) {
     if (!elysium) return 0;
@@ -255,13 +255,13 @@ static void gamble_rates_apply(uint64_t G, int harrogath) {
 }
 
 // ---- 赌博货架（只在极乐这一局改，结束或换局时写回）：
-//   原来就在货架上的底材都留。不再因为「最低物品等级没有合格暗金」拿掉，所以匕首、法杖留着。
-//   职业专属不用写死的类型码：类型记录 +0x20 是 ItemTypes 的 Class，0xFF = 不限职业，0–7 = 亚马逊到术士。自己或父类型带职业、赌博表里没有的底材补上（斗篷、法典、爪都在）。类型表里没有的行不发明，药水和任务物品不整表加进去。
+//   原版赌博表没有匕首、短剑、剑刃。只留「原来就在货架上的」补不回它们。
+//   补两条：类型走到 ItemTypes 行 45（武器）或 50（护甲）的底材；以及 Class（类型记录 +0x20）不是 0xFF 的职业专属。物品表 +0x13a（quest 列）非 0 的不补，药水和戒指原来没列的也不补。
 //   地狱哈洛加斯、并且这角色通关过秘境时，仍把「本局已出过」位图 G+0x3638 清掉，出城写回。这只避免「已经出过」把暗金降成稀有，不拿掉底材。
 //   货架 0x7ea770：物品等级 = clamp(人物等级 − 5 + 随机 % 10, 5, 99)。候选 = T+0x16d8 数组的前 cap[等级] 个（cap 在 T+0x16f0 + 等级 × 4，数组按物品表 +0x10d 等级升序）。改数组时按同样的排序重写 cap。
 // ---- Gambling shelf (rewritten only during an Elysium run, restored when the run ends or changes):
-//   A base the shelf already listed stays. It is not removed for lacking a qualifying unique at the lowest item level, so daggers and staves stay.
-//   Class-specific bases do not use a hardcoded type-code list: byte +0x20 of a type record is the Class column of ItemTypes, 0xFF = not class-locked, 0–7 = Amazon through Warlock. A base whose own type or a parent type is class-locked is inserted even when gamble.txt omitted it (cloaks, grimoires and claws included). Rows absent from the type table are not invented, and potions and quest items are not dumped onto the shelf.
+//   The original gamble list has no daggers, dirks or blades. Keeping only bases the shelf already listed does not bring them back.
+//   Two kinds are inserted: a base whose type walks to ItemTypes row 45 (weapon) or 50 (armor), and a class-specific base whose Class (type record +0x20) is not 0xFF. A row whose item-table byte +0x13a (the quest column) is nonzero is not inserted, and potions and rings the list omitted are not inserted either.
 //   In Hell Harrogath, after this character has cleared a rift, the "already dropped this run" bitmap at G+0x3638 is still cleared and written back on leaving town. That only avoids the "already dropped" downgrade to rare. It does not remove bases.
 //   Shelf 0x7ea770: item level = clamp(character level − 5 + random % 10, 5, 99). Candidates = the first cap[level] entries of the array at T+0x16d8 (cap at T+0x16f0 + level × 4; the array is in ascending order of the level at item table +0x10d). When the array is rewritten, caps are rewritten with the same ordering.
 static struct { uint64_t caps, slot_ptr, slot_n, orig_arr; uint32_t *neu; uint32_t save_caps[100], orig_n; int on, filter; uint32_t bm[128]; int bm_on, nbm; uint64_t bmG; } GS;
@@ -283,6 +283,18 @@ static int shelf_class_item(uint64_t T, int idx, int depth) {   // 类型记录 
     if (e2 != idx && e2 != e1 && shelf_class_item(T, e2, depth + 1)) return 1;
     return 0;
 }
+static int shelf_ancestor(uint64_t T, int idx, int want, int depth) {   // 自己或父类型（+4 / +6）是不是这一行。行号同 itemtypes.txt：45 武器、50 护甲 | Whether this type or a parent (+4 / +6) is this row. Row numbers match itemtypes.txt: 45 weapon, 50 armor
+    uint64_t types = rd(T + 0x1368), nt = rd(T + 0x1370);
+    if (idx < 0 || !types || !nt || nt > 100000 || (uint64_t)idx >= nt || depth > 4) return 0;
+    if (idx == want) return 1;
+    if (depth == 4) return 0;
+    uint64_t rec = types + (uint64_t)idx * 0xe8;
+    int16_t e1 = *(int16_t *)(uintptr_t)(rec + 4), e2 = *(int16_t *)(uintptr_t)(rec + 6);
+    if (e1 != idx && shelf_ancestor(T, e1, want, depth + 1)) return 1;
+    if (e2 != idx && e2 != e1 && shelf_ancestor(T, e2, want, depth + 1)) return 1;
+    return 0;
+}
+static int shelf_gear(uint64_t T, int idx) { return shelf_ancestor(T, idx, 45, 0) || shelf_ancestor(T, idx, 50, 0); }
 static int shelf_low_unique(uint64_t ut, uint32_t nu, uint32_t code, int lo, uint8_t g101, uint8_t g108) {
     for (uint32_t u = 0; u < nu; u++) { uint64_t r = ut + (uint64_t)u * 0x15c; uint8_t fl = *(uint8_t *)(uintptr_t)(r + 0x2c); int16_t f1 = *(int16_t *)(uintptr_t)(r + 0x8c), f2 = *(int16_t *)(uintptr_t)(r + 0x8e);
         if (*(uint32_t *)(uintptr_t)(r + 0x28) != code || !(fl & 1) || (fl & 4) || *(int16_t *)(uintptr_t)(r + 0x38) > lo) continue;
@@ -308,9 +320,11 @@ static void shelf_sync(uint64_t G, uint64_t player, int filter) {
     static uint32_t keep[4096]; uint32_t nk = 0;
     for (uint32_t k = 0; k < n && nk < 4096; k++) { uint32_t c = a[k]; if (c >= ni) continue; int16_t ty = *(int16_t *)(uintptr_t)(it + (uint64_t)c * 0x1c0 + 0x12e);
         uint32_t ic = *(uint32_t *)(uintptr_t)(it + (uint64_t)c * 0x1c0 + 0x80); int low = shelf_low_unique(ut, nu, ic, lo, g101, g108);
-        if (dm_gamble_shelf_eligible(1, shelf_class_item(T, ty, 0), 1, low, filter)) keep[nk++] = c; }
-    for (uint32_t c = 0; c < ni && nk < 4096; c++) { if (shelf_has(keep, nk, c)) continue; int16_t ty = *(int16_t *)(uintptr_t)(it + (uint64_t)c * 0x1c0 + 0x12e);
-        if (shelf_class_item(T, ty, 0)) keep[nk++] = c; }   // 赌博表没列的职业专属底材补进去。品质仍走游戏自己的掷骰 | Class-specific bases missing from the gamble list are inserted. Quality still uses the game's own roll
+        if (dm_gamble_shelf_eligible(1, shelf_class_item(T, ty, 0), 1, low, filter, 0)) keep[nk++] = c; }
+    for (uint32_t c = 0; c < ni && nk < 4096; c++) { if (shelf_has(keep, nk, c)) continue;
+        if (*(uint8_t *)(uintptr_t)(it + (uint64_t)c * 0x1c0 + 0x13a) != 0) continue;   // quest 列非 0：王者之杖、卡林连枷不进货架 | Nonzero quest column: Staff of Kings and Khalim's Flail are not put on the shelf
+        int16_t ty = *(int16_t *)(uintptr_t)(it + (uint64_t)c * 0x1c0 + 0x12e);
+        if (dm_gamble_shelf_eligible(1, shelf_class_item(T, ty, 0), 0, 0, filter, shelf_gear(T, ty))) keep[nk++] = c; }   // 赌博表没列的武器、护甲、职业专属补进去。品质仍走游戏自己的掷骰 | Weapons, armor and class-specific bases missing from the gamble list are inserted. Quality still uses the game's own roll
     if (!nk) { shelf_give_g = G; shelf_give_f = filter; LOG("【红】秘境：赌博货架筛完一件不剩，不改"); return; }
     for (uint32_t i = 1; i < nk; i++) { uint32_t v = keep[i]; uint8_t iv = *(uint8_t *)(uintptr_t)(it + (uint64_t)v * 0x1c0 + 0x10d); uint32_t j = i;
         while (j > 0 && *(uint8_t *)(uintptr_t)(it + (uint64_t)keep[j - 1] * 0x1c0 + 0x10d) > iv) { keep[j] = keep[j - 1]; j--; } keep[j] = v; }
@@ -318,7 +332,7 @@ static void shelf_sync(uint64_t G, uint64_t player, int filter) {
     GS.orig_arr = arr; GS.orig_n = n; GS.slot_ptr = T + 0x16d8; GS.slot_n = T + 0x16e0; GS.caps = (uint64_t)(uintptr_t)caps; memcpy(GS.save_caps, caps, sizeof GS.save_caps); free(GS.neu); GS.neu = neu;
     *(uint64_t *)(uintptr_t)(T + 0x16d8) = (uint64_t)(uintptr_t)neu; *(uint32_t *)(uintptr_t)(T + 0x16e0) = nk;
     for (int L = 0; L < 100; L++) { uint32_t c = 0; for (uint32_t k = 0; k < nk; k++) if (*(uint8_t *)(uintptr_t)(it + (uint64_t)keep[k] * 0x1c0 + 0x10d) <= L) c++; caps[L] = c; }
-    GS.on = 1; GS.filter = filter; LOG("赌博货架 %u → %u 件（原来就在货架上的都留，各职业专属也补上）", n, nk);
+    GS.on = 1; GS.filter = filter; LOG("赌博货架 %u → %u 件（原来就在货架上的都留，武器、护甲和各职业专属没列的也补上）", n, nk);
 }
 
 
@@ -1400,7 +1414,7 @@ void dm_rift_tick(uint64_t G, uint64_t player, uint8_t *main_base) {
         rec_load();   /* 秘境记录任何局都读（不看这一局有没有秘境资格）：佣兵装备位按最高通关层解锁，解锁状态要跟角色走，普通 / 噩梦局里也认 | Rift records are read in every run (regardless of whether this run qualifies for rifts): mercenary equipment slots unlock by highest level cleared, and the unlock state must follow the character, so it counts in Normal / Nightmare runs too */
         if (L.eligible) { { const char *e = getenv("DM_RIFT_TEST_BEST"); if (e) R.best = atoi(e); e = getenv("DM_RIFT_TEST_UNLOCK"); if (e) R.unlock = atoi(e); } } }   // 测试：钉最高层（看赌博加成）   // 玩家数据开头即角色名（同极乐世界） | Test: pin the highest level (to see the gambling bonus)   // The player data starts with the character name (same as Elysium)
     gamble_rates_apply(G, lv == LV_TOWN);   // 极乐才写 10000/20000。哈洛加斯加成更高时不往下压。不是极乐就写回第一次改表前的数 | The 10000/20000 floor is written only in Elysium. A higher Harrogath bonus is not lowered. Outside Elysium the values from before the first edit are written back
-    { int hell = *(uint8_t *)(uintptr_t)(G + 0x104) == 2; shelf_sync(G, player, lv == LV_TOWN && L.eligible > 0 && R.best >= 1 && hell); }   // 极乐才改货架：原来就在上面的都留，再补职业专属。filter 仍表示地狱哈洛加斯且通关过秘境，只用来清「本局已出过」 | The shelf changes only in Elysium: bases already listed stay, then class-specific bases are added. filter still means Hell Harrogath after a rift clear, and is used only to clear "already dropped this run"
+    { int hell = *(uint8_t *)(uintptr_t)(G + 0x104) == 2; shelf_sync(G, player, lv == LV_TOWN && L.eligible > 0 && R.best >= 1 && hell); }   // 极乐才改货架：原来就在上面的都留，再补武器、护甲和职业专属。filter 仍表示地狱哈洛加斯且通关过秘境，只用来清「本局已出过」 | The shelf changes only in Elysium: bases already listed stay, then weapons, armor and class-specific bases are added. filter still means Hell Harrogath after a rift clear, and is used only to clear "already dropped this run"
     if (!L.eligible) return;
     { static uint64_t seen; static uint32_t at; uint32_t tq = *(uint32_t *)(uintptr_t)(G + 0x170);   // 通关点数的补发：换了玩家单位（进局）后延 75 拍 | catch-up grant of clear points: delayed 75 ticks after the player unit changes (joining a game)
       if (player != seen) { seen = player; at = tq + 75; } else if (at && tq >= at) { at = 0; int p0 = R.pts; if (pts_grant(player) || R.pts != p0) rec_save(); } }

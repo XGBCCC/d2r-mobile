@@ -62,7 +62,7 @@ static const struct { const char *k, *zh, *en; } k_dm_i18n[] = {
     { "dmBrDiabloClone", "暗黑迪亚波罗", "Diablo Clone" },
     { "dmBrUbers", "超级墨菲斯托、超级迪亚波罗、超级巴尔", "Uber Mephisto, Uber Diablo, Uber Baal" },
     { "dmBlissTitle", "极乐世界", "Elysium" },
-    { "dmBlissDesc", "暗金 ×8、套装 ×5、符文 ×12；Boss 永远按首次击败掉落。生命与法力保持全满，装备不掉耐久，花费不扣金币。赌博暗金 10%，套装 20%，各职业专属底材都在。", "Unique x8, Set x5, Runes x12; bosses always drop as on first kill. Life and mana stay full, durability does not drop, spending takes no gold. Gamble unique 10%, set 20%, with class bases." },
+    { "dmBlissDesc", "暗金 ×8、套装 ×5、符文 ×12；Boss 永远按首次击败掉落。生命与法力保持全满，装备不掉耐久，花费不扣金币。赌博暗金 10%，套装 20%，武器和护甲都能赌，匕首也在。", "Unique x8, Set x5, Runes x12; bosses always drop as on first kill. Life and mana stay full, durability does not drop, spending takes no gold. Gamble unique 10%, set 20%, weapons and armor included, daggers too." },
     { "dmRwHint", "先移到个人仓库或背包", "Move out of shared stash first" },
     { "dmRwGo", "一键合成", "Craft" },
     { "dmPauseShareLog", "分享诊断日志", "Share Diagnostics" },
