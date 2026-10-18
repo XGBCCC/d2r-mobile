@@ -226,9 +226,9 @@ void dm_rift_ui_pump(void) {
         if (hx < 100) snprintf(t, sizeof t, "×%d.%d", hx / 10, hx % 10); else snprintf(t, sizeof t, "×%d", (hx + 5) / 10); text(find(bw, "TouchRF_Str", 0), t);
         if (lv) snprintf(t, sizeof t, "%d", lv); else snprintf(t, sizeof t, "%s", dm_str(rb(), "dmRiftLvlBase")); text(find(bw, "TouchRF_Lvl", 0), t);
         text(find(bw, "TouchRF_Time", 0), "15:00");
-        uint32_t gu, gs, nu, ns; dm_rift_gamble_vals(m.best, &gu, &gs); dm_rift_gamble_vals(g_sel, &nu, &ns);   // 安亚赌博：当前（按最高通关）+ 通关所选层后 | Anya gambling: current (by highest clear) + after clearing the selected level
-        // 四行：通关过 = 暗金 / 套装（当前）；所选层高于最高通关再加「通关后暗金 / 通关后套装」（通关所选层之后的值）；没通关过只有后两行
-        // Four rows: has cleared = unique / set (current); if the selected level is above the highest clear, add 「通关后暗金 / 通关后套装」(unique after clear / set after clear) (the values after clearing the selected level); never cleared = only the last two rows
+        uint32_t gu, gs, nu, ns; dm_gamble_rates(2, m.best, 1, &gu, &gs); dm_gamble_rates(2, g_sel, 1, &nu, &ns);   // 安亚在哈洛加斯：当前和下层都走同一个赌博概率（至少 10% / 20%，秘境加成更高时用更高的） | Anya is in Harrogath: current and the next level both use the same gamble rates (at least 10% / 20%; a higher rift bonus is used when it is higher)
+        // 四行：暗金 / 套装（当前，没通关过也是 10% / 20%，不会显示 0）；所选层高于最高通关再加「通关后暗金 / 通关后套装」
+        // Four rows: unique / set (current; with no clear yet this is still 10% / 20%, not 0); if the selected level is above the highest clear, add 「通关后暗金 / 通关后套装」(unique after clear / set after clear)
         char ln[4][3][40]; memset(ln, 0, sizeof ln); int r = 0;
         if (gu) { snprintf(ln[r][0], 40, "%s", dm_str(rb(), "dmRiftGamUni")); snprintf(ln[r++][1], 40, "%u.%u%%", gu / 1000, gu / 100 % 10); snprintf(ln[r][0], 40, "%s", dm_str(rb(), "dmRiftGamSet")); snprintf(ln[r++][2], 40, "%u.%u%%", gs / 1000, gs / 100 % 10); }
         // 英文（别硬造「Unique after / Set after」）：「通关后」那两行换成一行小标题「After This Level」+ 一行两个数并排（金 = Unique、绿 = Set，同上面两行的颜色）

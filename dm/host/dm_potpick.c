@@ -30,12 +30,13 @@ void dm_potpick_step(uint8_t *b) {
     if (b) { void dm_autobuff_pump(uint8_t *, uint64_t); void dm_autobuff_test_drop(uint64_t); uint64_t pl = ((uint64_t (*)(uint32_t))(b + 0x45f9d0))(*(uint32_t *)(b + 0x2d20e4c)); dm_autobuff_test_drop(pl); dm_autobuff_pump(b, pl); }
     if (!b) return;
     { void dm_qol_sort_pump(uint8_t *); dm_qol_sort_pump(b); }   // 放不下的那件：整理完再重发一次（dm_qol.c） | the one that did not fit: resend once after sorting (dm_qol.c)
-    static uint64_t next; uint64_t fr = dm_guest_frame(); if (fr < next) return;
-    uint64_t pl = ((uint64_t (*)(uint32_t))(b + 0x45f9d0))(*(uint32_t *)(b + 0x2d20e4c)); if (!pl) return;
+    static uint64_t next; static uint32_t sent[8], sfr[8], skip[8]; static int si, ki, live;
+    uint64_t pl = ((uint64_t (*)(uint32_t))(b + 0x45f9d0))(*(uint32_t *)(b + 0x2d20e4c));
+    if (!pl) { if (live) { memset(sent, 0, sizeof sent); memset(sfr, 0, sizeof sfr); memset(skip, 0, sizeof skip); si = ki = live = 0; } return; }   // 离局清掉「不再捡」的名单：下一局物品号从头用，不清就会把新的金币堆当成上一局到顶的那堆 | Leaving the game clears the "do not pick up" list: the next game reuses item ids from the start, and without the clear a new gold pile is treated as the capped one from the last game
+    live = 1; uint64_t fr = dm_guest_frame(); if (fr < next) return;
     uint32_t pm = *(uint32_t *)(pl + 0xc); if (pm == 0 || pm == 17) return;
     uint64_t inv = *(uint64_t *)(pl + 0x90); if (!inv || *(uint32_t *)inv != 0x01020304 || *(uint64_t *)(inv + 0x40)) return;
     uint64_t pp = *(uint64_t *)(pl + 0x38); if (!pp) return; int px = *(uint16_t *)(pp + 2), py = *(uint16_t *)(pp + 6);
-    static uint32_t sent[8], sfr[8], skip[8]; static int si, ki;
     uint32_t bid = 0; int bx = 0, by = 0, bd = PICK_R + 1;
     for (int k = 0; k < 128; k++) for (uint64_t it = *(uint64_t *)(b + 0x2d603a0 + 4 * 0x400 + k * 8); it; it = *(uint64_t *)(it + 0x158)) {
         if (*(uint32_t *)(it + 0xc) != 3) continue;

@@ -207,15 +207,50 @@ static int pts_grant(uint64_t player) {   // 返回发了几份（0 = 没有该�
     return n;
 }
 
-// ---- 赌博加成（设计稿 v3，按绝对概率定）：通关过第 1 层起，地狱赌博出暗金 10%，最高层每多 1 层 +0.1 个百分点（100 层 19.9%）；套装同倍（原版地狱套装 = 暗金 × 2）。
-//   写 difficultylevels（数据表根 +0x1518，每条 0x84）地狱那行的 GambleUnique +0x74 / GambleSet +0x70（十万分之一，0x7eebf0 掷一次 % 100000，不夹值；P0 读码）；稀有 +0x6c 不动。
-//   只在有资格的角色、人在哈洛加斯时生效（只有安亚加成），离开哈洛加斯 / 换局写回原值
-// ---- Gambling bonus (design doc v3, set by absolute probability): from clearing Rift level 1 on, Hell gambling yields uniques at 10%, +0.1 percentage point for each additional highest level (19.9% at Rift level 100); sets scale by the same factor (original Hell set = unique × 2).
-//   Writes GambleUnique +0x74 / GambleSet +0x70 of the Hell row of difficultylevels (data table root +0x1518, 0x84 per entry) (in units of 1/100000; 0x7eebf0 rolls once % 100000, no clamping; P0 code reading); rare +0x6c is untouched.
-//   Applies only for eligible characters while in Harrogath (only Anya gets the bonus); original values are written back on leaving Harrogath / run change
+// ---- 赌博概率：普通 / 噩梦 / 地狱、每个赌博商人，暗金 10000、套装 20000（十万分之一，0x7eebf0 掷 % 100000）。稀有 +0x6c 不动。
+//   哈洛加斯里秘境加成（dm_rift_gamble_vals：通关第 1 层起地狱暗金 10%，每多 1 层 +0.1 个百分点，套装 = 暗金 × 2）比这个底高，就保持那个更高的数，不往下压。
+//   离开哈洛加斯写回这个底，不写回原版大约 1/2000、2/2000。三个难度行都写（difficultylevels 根 +0x1518，每条 0x84，暗金 +0x74、套装 +0x70）。
+// ---- Gamble rates: on Normal, Nightmare and Hell, every gambler rolls unique 10000 and set 20000 (per 100000; 0x7eebf0 rolls % 100000). Rare +0x6c is untouched.
+//   In Harrogath, a rift bonus (dm_rift_gamble_vals: Hell unique 10% from clearing level 1, +0.1 percentage point per further level, set = unique × 2) that is already above this floor is kept and is not lowered.
+//   Leaving Harrogath writes this floor back, not the original roughly 1/2000 and 2/2000. All three difficulty rows are written (difficultylevels root +0x1518, 0x84 each, unique +0x74, set +0x70).
 void dm_rift_gamble_vals(int best, uint32_t *uniq, uint32_t *set) { if (best > 100) best = 100; *uniq = best >= 1 ? 10000u + 100u * (uint32_t)(best - 1) : 0; *set = *uniq * 2; }
-static struct { uint64_t row; uint32_t uniq, set; int on; } GB;
-static void gamble_restore(void) { if (!GB.on) return; *(uint32_t *)(uintptr_t)(GB.row + 0x74) = GB.uniq; *(uint32_t *)(uintptr_t)(GB.row + 0x70) = GB.set; GB.on = 0; LOG("秘境：赌博加成撤掉（暗金 %u、套装 %u，十万分之一）", GB.uniq, GB.set); }
+static uint32_t gcode(const char *s) { char b[4] = { ' ', ' ', ' ', ' ' }; for (int i = 0; i < 4 && s[i]; i++) b[i] = s[i]; uint32_t v; memcpy(&v, b, 4); return v; }
+static uint32_t gnorm(uint32_t c) { char b[4]; memcpy(b, &c, 4); for (int i = 0; i < 4; i++) if (b[i] == 0) b[i] = ' '; memcpy(&c, b, 4); return c; }
+static int gsame(uint32_t c, const char *s) { return gnorm(c) == gcode(s); }
+static int gamble_warlock_code(uint32_t c) {   // 表里真有术士类才认这些码。不发明物品行 | These codes count only when the type table already has a warlock class. No item rows are invented
+    static const char *w[] = { "grim", "grmo", "warl", "wrlk", "wlck", "wloc", "wlki" };
+    for (unsigned i = 0; i < sizeof w / sizeof *w; i++) if (gsame(c, w[i])) return 1; return 0;
+}
+int dm_gamble_type_family(uint32_t type_code, int warlock_in_table) {   // 亚马逊弓 / 标枪、野蛮人盔、圣骑士盾、德鲁伊皮帽、死灵头颅、法师法球。爪 h2h 本来就能赌，不在这里
+    // Amazon bows / javelins, barbarian helms, paladin shields, druid pelts, necromancer heads, sorceress orbs. Claws (h2h) were already gambleable and are not listed here
+    static const char *f[] = { "abow", "ajav", "aspe", "phlm", "ashd", "pelt", "head", "orb" };
+    for (unsigned i = 0; i < sizeof f / sizeof *f; i++) if (gsame(type_code, f[i])) return 1;
+    return warlock_in_table && gamble_warlock_code(type_code);
+}
+int dm_gamble_shelf_eligible(uint32_t type_code, int on_vanilla, int has_low_unique, int unique_filter, int warlock_in_table) {
+    if (dm_gamble_type_family(type_code, warlock_in_table)) return 1;   // 职业专属：没有低等级暗金、原本不在货架上，也留 | Class-specific: stays even with no low-level unique and even when it was not on the vanilla shelf
+    if (gsame(type_code, "h2h") && on_vanilla) return 1;   // 刺客爪本来就能赌，筛选也不拿掉 | Assassin claws were already gambleable and the filter does not drop them
+    if (!on_vanilla) return 0;
+    if (!unique_filter) return 1;
+    return has_low_unique ? 1 : 0;
+}
+void dm_gamble_rates(int diff, int best, int harrogath, uint32_t *uniq, uint32_t *set) {
+    uint32_t u = 10000u, s = 20000u;
+    if (diff == 2 && harrogath) { uint32_t ru = 0, rs = 0; dm_rift_gamble_vals(best, &ru, &rs); if (ru > u) { u = ru; s = rs; } }
+    if (uniq) *uniq = u; if (set) *set = s;
+}
+static struct { uint64_t base; int on; uint32_t last_u, last_s; } GB;
+static void gamble_restore(void) { GB.on = 0; }   // 换局：不把表写回原版。下一局第一拍按底重新写 | Run change: do not write the table back to vanilla. The next run's first tick writes the floor again
+static void gamble_rates_apply(uint64_t G, int harrogath) {
+    uint64_t T = tables(G); if (!T) return;
+    uint64_t base = rd(T + 0x1518); uint32_t n = *(uint32_t *)(uintptr_t)(T + 0x1520); if (!base || n < 3) return;
+    GB.base = base; GB.on = 1;
+    for (int d = 0; d < 3; d++) { uint32_t u, s; dm_gamble_rates(d, R.best, harrogath, &u, &s); uint64_t row = base + (uint64_t)d * 0x84;
+        uint32_t *pu = (uint32_t *)(uintptr_t)(row + 0x74), *ps = (uint32_t *)(uintptr_t)(row + 0x70);
+        if (*pu != u || *ps != s) { *pu = u; *ps = s; if (d == 2 && (u != GB.last_u || s != GB.last_s)) { GB.last_u = u; GB.last_s = s; LOG("赌博：地狱暗金 %u、套装 %u（十万分之一；普通和噩梦也是 10000 / 20000，除非哈洛加斯加成更高；稀有不动）", u, s); } }
+    }
+}
+
 // ---- 赌博「绝对暗金率」（掷中暗金不降级）：原版掷中暗金后，底材在该物品等级没有合格暗金、或抽中的暗金本局已出过，会降成稀有（0x654914，P2 读码）。
 //   做法不拦降级分支，而是让降级分支走不到：人在哈洛加斯时
 //   ① 赌博货架只留「在最低可能物品等级下就有合格暗金」的底材。货架 0x7ea770：物品等级 = clamp(人物等级 − 5 + 随机 % 10, 5, 99)，
@@ -228,44 +263,81 @@ static void gamble_restore(void) { if (!GB.on) return; *(uint32_t *)(uintptr_t)(
 //      candidates = the first cap[level] entries of the array at T+0x16d8 (cap at T+0x16f0 + level × 4; the array is in ascending order of the level at item table +0x10d), one picked at random; we rewrite the array and cap with the same ordering.
 //   (2) the original "already dropped this run" bitmap G+0x3638 is saved on entering town, cleared every tick while in town, and written back on leaving (in town only gambling generates uniques).
 //   Qualifying unique = a row in the unique table T+0x13e8 (0x15c per entry) with the same code, +0x2c bit 0 = 1 and bit 2 = 0, the ladder season field passing, and level at +0x38 <= item level (the conditions at 0x6544f8); for the drop condition formula, 3.x has only the "Hell" kind, and since this only applies in Hell it is not checked
-static struct { uint64_t arr, caps; uint32_t *save_arr; uint32_t save_caps[100], n; int on; uint32_t bm[128]; int bm_on, nbm; uint64_t bmG; } GS;
+static struct { uint64_t caps, slot_ptr, slot_n, orig_arr; uint32_t *neu; uint32_t save_caps[100], orig_n; int on, filter; uint32_t bm[128]; int bm_on, nbm; uint64_t bmG; } GS;
+static uint64_t shelf_give_g; static int shelf_give_f = -2;   // 货架自检失败后，同一局同一筛选不再每拍重扫、刷日志 | After a shelf self-check fails, the same run and the same filter are not rescanned and re-logged every tick
 static void shelf_restore(void) {
-    if (GS.on) { memcpy((void *)(uintptr_t)GS.arr, GS.save_arr, GS.n * 4); memcpy((void *)(uintptr_t)GS.caps, GS.save_caps, sizeof GS.save_caps); GS.on = 0; LOG("秘境：赌博货架写回原版"); }
+    shelf_give_g = 0; shelf_give_f = -2;
+    if (GS.on) { if (GS.slot_ptr && GS.orig_arr) *(uint64_t *)(uintptr_t)GS.slot_ptr = GS.orig_arr; if (GS.slot_n) *(uint32_t *)(uintptr_t)GS.slot_n = GS.orig_n;
+        if (GS.caps) memcpy((void *)(uintptr_t)GS.caps, GS.save_caps, sizeof GS.save_caps); free(GS.neu); GS.neu = 0; GS.on = 0; LOG("秘境：赌博货架写回"); }
     if (GS.bm_on) { uint32_t *w = (uint32_t *)(uintptr_t)(GS.bmG + 0x3638); for (int i = 0; i < GS.nbm; i++) w[i] |= GS.bm[i]; GS.bm_on = 0; }
 }
-static void shelf_apply(uint64_t G, uint64_t player) {
-    uint64_t T = tables(G); if (!T) return;
-    if (!GS.bm_on) { uint64_t nu = rd(T + 0x13f0); GS.nbm = (int)((nu + 31) / 32); if (GS.nbm > 128) GS.nbm = 128; GS.bmG = G; memcpy(GS.bm, (void *)(uintptr_t)(G + 0x3638), GS.nbm * 4); GS.bm_on = 1; }
-    memset((void *)(uintptr_t)(G + 0x3638), 0, GS.nbm * 4);   // 每拍清：刚赌出来的那件同局可再赌（出城时把进城前的位写回） | Cleared every tick: the item just gambled can be gambled again in the same run (on leaving town the bits from before entering town are written back)
-    if (GS.on) return;
+static int shelf_warlock(uint64_t T) {   // 类型表里出现术士码才把术士装备放上货架 | Warlock gear is added only when a warlock code is already in the type table
+    uint64_t types = rd(T + 0x1368), nt = rd(T + 0x1370); if (!types || !nt || nt > 100000) return 0;
+    for (uint64_t i = 0; i < nt; i++) if (gamble_warlock_code(*(uint32_t *)(uintptr_t)(types + i * 0xe8))) return 1; return 0;
+}
+static uint32_t shelf_family(uint64_t T, int idx, int warlock_ok, int depth) {   // 类型码在记录开头 4 字节；父类型常在 +4 / +6。只认具体职业类，不认 amaz 这种总类，免得把亚马逊矛也算进「弓和标枪」
+    // The type code is the first 4 bytes of the record; parents are often at +4 / +6. Match the specific class line, not a parent such as amaz, so Amazon spears are not required by the bow and javelin lines
+    uint64_t types = rd(T + 0x1368), nt = rd(T + 0x1370);
+    if (idx < 0 || !types || !nt || nt > 100000 || (uint64_t)idx >= nt || depth > 4) return 0;
+    uint64_t rec = types + (uint64_t)idx * 0xe8; uint32_t code = *(uint32_t *)(uintptr_t)rec;
+    if (dm_gamble_type_family(code, warlock_ok)) return code;
+    if (depth == 4) return 0;
+    int16_t e1 = *(int16_t *)(uintptr_t)(rec + 4), e2 = *(int16_t *)(uintptr_t)(rec + 6); uint32_t c;
+    if (e1 != idx && (c = shelf_family(T, e1, warlock_ok, depth + 1))) return c;
+    if (e2 != idx && e2 != e1 && (c = shelf_family(T, e2, warlock_ok, depth + 1))) return c;
+    return 0;
+}
+static int shelf_h2h(uint64_t T, int idx, int depth) {   // 刺客爪（h2h 及其子类）本来就能赌。哈洛加斯暗金筛选不能因为没有低等级暗金把它们拿掉 | Assassin claws (h2h and its children) were already gambleable. The Harrogath unique filter must not drop them for lack of a low-level unique
+    uint64_t types = rd(T + 0x1368), nt = rd(T + 0x1370);
+    if (idx < 0 || !types || !nt || nt > 100000 || (uint64_t)idx >= nt || depth > 4) return 0;
+    uint64_t rec = types + (uint64_t)idx * 0xe8;
+    if (gsame(*(uint32_t *)(uintptr_t)rec, "h2h")) return 1;
+    if (depth == 4) return 0;
+    int16_t e1 = *(int16_t *)(uintptr_t)(rec + 4), e2 = *(int16_t *)(uintptr_t)(rec + 6);
+    if (e1 != idx && shelf_h2h(T, e1, depth + 1)) return 1;
+    if (e2 != idx && e2 != e1 && shelf_h2h(T, e2, depth + 1)) return 1;
+    return 0;
+}
+static int shelf_low_unique(uint64_t ut, uint32_t nu, uint32_t code, int lo, uint8_t g101, uint8_t g108) {
+    for (uint32_t u = 0; u < nu; u++) { uint64_t r = ut + (uint64_t)u * 0x15c; uint8_t fl = *(uint8_t *)(uintptr_t)(r + 0x2c); int16_t f1 = *(int16_t *)(uintptr_t)(r + 0x8c), f2 = *(int16_t *)(uintptr_t)(r + 0x8e);
+        if (*(uint32_t *)(uintptr_t)(r + 0x28) != code || !(fl & 1) || (fl & 4) || *(int16_t *)(uintptr_t)(r + 0x38) > lo) continue;
+        if (!g101 && !(f1 == 0 || f2 < 0 || (f1 < 0 && g108))) continue; return 1; }
+    return 0;
+}
+static int shelf_has(const uint32_t *keep, uint32_t nk, uint32_t c) { for (uint32_t i = 0; i < nk; i++) if (keep[i] == c) return 1; return 0; }
+static void shelf_sync(uint64_t G, uint64_t player, int filter) {
+    uint64_t T = tables(G); if (!T || !player) return;
+    if (GS.on && GS.filter != filter) shelf_restore();
+    if (filter) { if (!GS.bm_on) { uint64_t nu = rd(T + 0x13f0); GS.nbm = (int)((nu + 31) / 32); if (GS.nbm > 128) GS.nbm = 128; if (GS.nbm < 0) GS.nbm = 0; GS.bmG = G; memcpy(GS.bm, (void *)(uintptr_t)(G + 0x3638), (size_t)GS.nbm * 4); GS.bm_on = 1; }
+        memset((void *)(uintptr_t)(G + 0x3638), 0, (size_t)GS.nbm * 4); }   // 只在哈洛加斯暗金筛选开着时清「本局已出过」 | Clear "already dropped this run" only while the Harrogath unique filter is on
+    else if (GS.bm_on) { uint32_t *w = (uint32_t *)(uintptr_t)(GS.bmG + 0x3638); for (int i = 0; i < GS.nbm; i++) w[i] |= GS.bm[i]; GS.bm_on = 0; }
+    if (GS.on && GS.filter == filter) return;
+    if (shelf_give_g == G && shelf_give_f == filter) return;
     uint64_t arr = rd(T + 0x16d8), it = rd(T + 0x15c0), ut = rd(T + 0x13e8); uint32_t n = *(uint32_t *)(uintptr_t)(T + 0x16e0), nu = (uint32_t)rd(T + 0x13f0), ni = *(uint32_t *)(uintptr_t)(T + 0x15c8);
-    uint32_t *caps = (uint32_t *)(uintptr_t)(T + 0x16f0), *a = (uint32_t *)(uintptr_t)arr; if (!arr || !it || !ut || !n || n > 4096) return;
-    // 自检：数组按物品表 +0x10d 等级升序、cap[L] = 等级 ≤ L 的个数（我们对货架结构的理解成立才动）
-    // Self-check: the array is in ascending order of the level at item table +0x10d, and cap[L] = number with level <= L (we only act if our understanding of the shelf structure holds)
+    uint32_t *caps = (uint32_t *)(uintptr_t)(T + 0x16f0), *a = (uint32_t *)(uintptr_t)arr; if (!arr || !it || !ut || !n || n > 4096 || !ni || ni > 20000) return;
     for (int L = 5; L < 100; L++) { uint32_t c = 0; for (uint32_t k = 0; k < n; k++) if (a[k] < ni && *(uint8_t *)(uintptr_t)(it + (uint64_t)a[k] * 0x1c0 + 0x10d) <= L) c++;
-        if (c != caps[L]) { LOG("【红】秘境：赌博货架结构和读码不符（等级 %d：cap %u，按 +0x10d 数得 %u），不改货架", L, caps[L], c); GS.on = 0; return; } }
-    int lo = gs(player, 12) - 5; if (lo < 5) lo = 5; if (lo > 99) lo = 99;
+        if (c != caps[L]) { shelf_give_g = G; shelf_give_f = filter; LOG("【红】秘境：赌博货架结构和读码不符（等级 %d：cap %u，按 +0x10d 数得 %u），不改货架", L, caps[L], c); return; } }
+    int lo = gs(player, 12) - 5; if (lo < 5) lo = 5; if (lo > 99) lo = 99; int warlock_ok = shelf_warlock(T);
     uint8_t g101 = *(uint8_t *)(uintptr_t)(G + 0x101), g108 = *(uint8_t *)(uintptr_t)(G + 0x108);
     static uint32_t keep[4096]; uint32_t nk = 0;
-    for (uint32_t k = 0; k < n; k++) { uint32_t c = a[k]; if (c >= ni) continue; uint32_t code = *(uint32_t *)(uintptr_t)(it + (uint64_t)c * 0x1c0 + 0x80); int ok = 0;
-        for (uint32_t u = 0; u < nu && !ok; u++) { uint64_t r = ut + (uint64_t)u * 0x15c; uint8_t fl = *(uint8_t *)(uintptr_t)(r + 0x2c); int16_t f1 = *(int16_t *)(uintptr_t)(r + 0x8c), f2 = *(int16_t *)(uintptr_t)(r + 0x8e);
-            if (*(uint32_t *)(uintptr_t)(r + 0x28) != code || !(fl & 1) || (fl & 4) || *(int16_t *)(uintptr_t)(r + 0x38) > lo) continue;
-            if (!g101 && !(f1 == 0 || f2 < 0 || (f1 < 0 && g108))) continue;
-            ok = 1; }
-        if (ok) keep[nk++] = c; }
-    if (!nk) { LOG("【红】秘境：赌博货架筛完一件不剩，不改"); return; }
-    GS.arr = arr; GS.caps = (uint64_t)(uintptr_t)caps; GS.n = n; free(GS.save_arr); GS.save_arr = malloc(n * 4); memcpy(GS.save_arr, a, n * 4); memcpy(GS.save_caps, caps, sizeof GS.save_caps);
-    memcpy(a, keep, nk * 4);
+    for (uint32_t k = 0; k < n && nk < 4096; k++) { uint32_t c = a[k]; if (c >= ni) continue; int16_t ty = *(int16_t *)(uintptr_t)(it + (uint64_t)c * 0x1c0 + 0x12e);
+        uint32_t fam = shelf_family(T, ty, warlock_ok, 0), direct = 0; uint64_t types = rd(T + 0x1368), nt = rd(T + 0x1370);
+        if (types && ty >= 0 && (uint64_t)ty < nt) direct = *(uint32_t *)(uintptr_t)(types + (uint64_t)ty * 0xe8);
+        uint32_t use = fam ? fam : direct; if (!fam && shelf_h2h(T, ty, 0)) use = gcode("h2h");
+        uint32_t ic = *(uint32_t *)(uintptr_t)(it + (uint64_t)c * 0x1c0 + 0x80); int low = shelf_low_unique(ut, nu, ic, lo, g101, g108);
+        if (dm_gamble_shelf_eligible(use, 1, low, filter, warlock_ok)) keep[nk++] = c; }
+    for (uint32_t c = 0; c < ni && nk < 4096; c++) { if (shelf_has(keep, nk, c)) continue; int16_t ty = *(int16_t *)(uintptr_t)(it + (uint64_t)c * 0x1c0 + 0x12e); uint32_t fam = shelf_family(T, ty, warlock_ok, 0);
+        if (fam && dm_gamble_shelf_eligible(fam, 0, 0, filter, warlock_ok)) keep[nk++] = c; }   // 原版货架没有的职业专属底材补进去。品质仍走游戏自己的掷骰 | Class-specific bases missing from the vanilla shelf are inserted. Quality still uses the game's own roll
+    if (!nk) { shelf_give_g = G; shelf_give_f = filter; LOG("【红】秘境：赌博货架筛完一件不剩，不改"); return; }
+    for (uint32_t i = 1; i < nk; i++) { uint32_t v = keep[i]; uint8_t iv = *(uint8_t *)(uintptr_t)(it + (uint64_t)v * 0x1c0 + 0x10d); uint32_t j = i;
+        while (j > 0 && *(uint8_t *)(uintptr_t)(it + (uint64_t)keep[j - 1] * 0x1c0 + 0x10d) > iv) { keep[j] = keep[j - 1]; j--; } keep[j] = v; }
+    uint32_t *neu = malloc((size_t)nk * 4); if (!neu) return; memcpy(neu, keep, (size_t)nk * 4);
+    GS.orig_arr = arr; GS.orig_n = n; GS.slot_ptr = T + 0x16d8; GS.slot_n = T + 0x16e0; GS.caps = (uint64_t)(uintptr_t)caps; memcpy(GS.save_caps, caps, sizeof GS.save_caps); free(GS.neu); GS.neu = neu;
+    *(uint64_t *)(uintptr_t)(T + 0x16d8) = (uint64_t)(uintptr_t)neu; *(uint32_t *)(uintptr_t)(T + 0x16e0) = nk;
     for (int L = 0; L < 100; L++) { uint32_t c = 0; for (uint32_t k = 0; k < nk; k++) if (*(uint8_t *)(uintptr_t)(it + (uint64_t)keep[k] * 0x1c0 + 0x10d) <= L) c++; caps[L] = c; }
-    GS.on = 1; LOG("秘境：赌博货架 %u → %u 件（只留人物等级 − 5 = %d 级就有合格暗金的底材）；cap[%d] %u → %u", n, nk, lo, lo + 4 > 99 ? 99 : lo + 4, GS.save_caps[lo + 4 > 99 ? 99 : lo + 4], caps[lo + 4 > 99 ? 99 : lo + 4]);
+    GS.on = 1; GS.filter = filter; LOG("赌博货架 %u → %u 件（职业专属底材都在；%s）", n, nk, filter ? "哈洛加斯只再拿掉没有低等级暗金的非职业底材" : "不按暗金筛选");
 }
-static void gamble_apply(uint64_t G) {
-    uint32_t u, st; dm_rift_gamble_vals(R.best, &u, &st); if (!u || *(uint8_t *)(uintptr_t)(G + 0x104) != 2) { gamble_restore(); return; }
-    uint64_t T = tables(G), base = T ? rd(T + 0x1518) : 0; uint64_t n = T ? *(uint32_t *)(uintptr_t)(T + 0x1520) : 0; if (!base || n < 3) return;
-    uint64_t row = base + 2 * 0x84; if (!GB.on) { GB.row = row; GB.uniq = *(uint32_t *)(uintptr_t)(row + 0x74); GB.set = *(uint32_t *)(uintptr_t)(row + 0x70); GB.on = 1; }
-    *(uint32_t *)(uintptr_t)(row + 0x74) = u; *(uint32_t *)(uintptr_t)(row + 0x70) = st;
-    LOG("秘境：赌博加成 最高第 %d 层 → 暗金 %u、套装 %u（十万分之一；原值 %u / %u）", R.best, u, st, GB.uniq, GB.set);
-}
+
 
 static _Atomic int g_run_seq;   // 开了第几层（start_rift 每次 +1；客户端每帧函数据此清自己的表） | Which level has been opened (start_rift adds 1 each time; the client per-frame function clears its own tables based on it)
 static _Atomic int g_cli_lv = -1;   // 客户端此刻所在关卡（dm_rift_client_pump 写、服务端拍读：串图要等客户端落地） | The level the client is currently in (written by dm_rift_client_pump, read by the server tick: map chaining waits for the client to land)
@@ -1109,7 +1181,7 @@ static void finish(uint64_t G, uint64_t player, uint64_t guard) {
     if (K.inc) { R.clears++; if (K.tier > R.best) R.best = K.tier; } if (K.inc && (!R.fast[K.tier] || RIFT_SECS - left < R.fast[K.tier])) R.fast[K.tier] = RIFT_SECS - left;
     if (K.inc) pts_grant(player);   // 通关点数：R.best 更新之后、下面 rec_save 之前。只算限时内通关（「超时通关不算过关，15 分钟内才是过关」），与上一行最高通关层同一口径 | clear points: after R.best is updated and before rec_save below. Only clears within the time limit count ("a clear after the time limit does not count as passing; only within 15 minutes does"), same rule as the highest cleared level on the previous line
     if (K.inc) for (int m = 10; m <= 100; m += 10) if (K.tier >= m && !(R.ms & (1u << (m / 10 - 1)))) milestone(G, player, m);   // 限时内通关才算首通 | Only a clear within the time limit counts as a first clear
-    R.tier = next; if (next > R.unlock) R.unlock = next; rec_save(); if (GB.on) gamble_apply(G);
+    R.tier = next; if (next > R.unlock) R.unlock = next; rec_save(); gamble_rates_apply(G, 0);   // 人还在秘境图上：三个难度写回底（10000/20000），不在这里抬高哈洛加斯加成。回到哈洛加斯的下一拍再用新的最高通关层写更高的数 | Still on the rift map: write the floor (10000/20000) on all three difficulties. Do not raise the Harrogath bonus here. The next tick in Harrogath writes the higher number from the new highest cleared level
     { int dm_request_save(void); LOG("秘境：结算请游戏存盘 → %d", dm_request_save()); }   // 层数进度（侧文件，上一行刚写进工作目录）与刚打到的东西随这次提交落盘，见 start_rift | the level progress (side file, just written into the working directory on the line above) and what was just looted go to disk with this commit, see start_rift
     if (K.inc) { char c[5] = "xa1 "; c[2] = (char)('1' + rnd(5)); give_item(G, player, c, 2, 99); }
     if (K.inc && next == K.tier) LOG("秘境：第 %d 层完成（剩 %d:%02d）→ 已是最高层，没有下一层", K.tier, left > 0 ? left / 60 : 0, left > 0 ? left % 60 : 0);
@@ -1344,17 +1416,16 @@ void dm_rift_tick(uint64_t G, uint64_t player, uint8_t *main_base) {
         { const char *e = getenv("DM_RIFT_TEST_GIVE"); char b2[200]; if (e) { strlcpy(b2, e, sizeof b2); for (char *sv, *k = strtok_r(b2, ";", &sv); k; k = strtok_r(NULL, ";", &sv)) { int r, lv; char c[5] = "    "; if (sscanf(k, "%d:%3[a-z0-9]:%d", &r, c, &lv) == 3) { c[3] = ' '; give_item2(G, player, c, 7, lv, r, 0); } } } }   // 测试：进局按「行:底材:物品等级;…」生成指定暗金，看成不成 | Test: on entering a run, generate the specified uniques per "row:base:item level;..." to see whether it works
         rec_load();   /* 秘境记录任何局都读（不看这一局有没有秘境资格）：佣兵装备位按最高通关层解锁，解锁状态要跟角色走，普通 / 噩梦局里也认 | Rift records are read in every run (regardless of whether this run qualifies for rifts): mercenary equipment slots unlock by highest level cleared, and the unlock state must follow the character, so it counts in Normal / Nightmare runs too */
         if (L.eligible) { { const char *e = getenv("DM_RIFT_TEST_BEST"); if (e) R.best = atoi(e); e = getenv("DM_RIFT_TEST_UNLOCK"); if (e) R.unlock = atoi(e); } } }   // 测试：钉最高层（看赌博加成）   // 玩家数据开头即角色名（同极乐世界） | Test: pin the highest level (to see the gambling bonus)   // The player data starts with the character name (same as Elysium)
+    gamble_rates_apply(G, lv == LV_TOWN);   // 每个赌博的人、三个难度都至少暗金 10000、套装 20000。人在哈洛加斯且秘境加成更高时保持更高的数。离开哈洛加斯写回这个底，不写回原版。没资格的局也写，写在下面的 return 之前 | Every gambler, on all three difficulties, gets at least unique 10000 and set 20000. In Harrogath a higher rift bonus is kept. Leaving Harrogath writes this floor, not vanilla. Games without rift eligibility are written too, before the return below
+    { int hell = *(uint8_t *)(uintptr_t)(G + 0x104) == 2; shelf_sync(G, player, lv == LV_TOWN && L.eligible > 0 && R.best >= 1 && hell); }   // 职业专属底材每个赌博的人都补上。暗金筛选只在地狱哈洛加斯、通关过秘境时开，职业专属和没有低等级暗金的爪子都留着 | Class-specific bases are added for every gambler. The unique filter is on only in Hell Harrogath after a rift clear; class-specific bases and claws without a low-level unique stay
     if (!L.eligible) return;
     { static uint64_t seen; static uint32_t at; uint32_t tq = *(uint32_t *)(uintptr_t)(G + 0x170);   // 通关点数的补发：换了玩家单位（进局）后延 75 拍 | catch-up grant of clear points: delayed 75 ticks after the player unit changes (joining a game)
       if (player != seen) { seen = player; at = tq + 75; } else if (at && tq >= at) { at = 0; int p0 = R.pts; if (pts_grant(player) || R.pts != p0) rec_save(); } }
     int st = atomic_load(&K.st);
     dm_door_label(B, G, RIFT_OBJ, "dmDoorRift", "大秘境", "Greater Rift", lv == LV_TOWN || in_rift_map(lv));
     dm_door_label(B, G, TOWN_OBJ, "dmDoorRiftTown", "回城", "Return to Town", in_rift_map(lv));
-    if (lv == LV_TOWN) { if (!GB.on) gamble_apply(G); } else gamble_restore();   // 加成只在哈洛加斯（安亚是秘境的兑换点）；别的城赌博保持原版（表是全局的，离开哈洛加斯即写回） | The bonus applies only in Harrogath (Anya is the rift's exchange point); gambling in other towns stays original (the table is global, so it is written back on leaving Harrogath)
-    if (lv == LV_TOWN && GB.on) shelf_apply(G, player); else shelf_restore();   // 赌博加成生效时（地狱、通关过）才筛货架   // 秘境图里有「下一层」门（342 原版只在憎恨囚牢 102，不在秘境图表里）   // 门名牌（dm_bossrush.c） | Filter the shelf only when the gambling bonus is active (Hell, has cleared)   // Rift maps have a 「下一层」(Next Level) door (342 originally exists only in Durance of Hate 102, which is not in the rift map table)   // Door nameplate (dm_bossrush.c)
-
-    // 门：城里一进来就开（秘境进行中也在，点了回当前图）
-    // Door: opens as soon as the player enters town (also present while a rift is in progress; tapping it returns to the current map)
+    // 门：城里一进来就开（秘境进行中也在，点了回当前图）。秘境图里有「下一层」门（342 原版只在憎恨囚牢 102，不在秘境图表里）。门名牌（dm_bossrush.c）
+    // Door: opens as soon as the player enters town (also present while a rift is in progress; tapping it returns to the current map). Rift maps have a Next Level door (342 originally exists only in Durance of Hate 102, which is not in the rift map table). Door nameplate (dm_bossrush.c)
     if (lv == LV_TOWN && !L.door && !L.door_tried) { L.door_tried = 1; L.door = make_rift_door(G, player); if (!L.door) L.door_tried = 0; }
     if (L.eligible > 0) atomic_store(&M.clvl, gs(player, 12));
     if (L.resume && L.eligible > 0 && lv == LV_TOWN && t > 50) { int tq = L.resume; L.resume = 0; LOG("秘境：一键重开后的新局 → 直接开第 %d 层", tq); start_rift(G, player, t, tq); return; }

@@ -221,7 +221,7 @@ static void a_send(uint8_t *b, uint64_t root, uint64_t cat, uint64_t act, int32_
     static int32_t payload[4]; static uint64_t msg[8]; payload[0] = p0; payload[1] = p1; memset(msg, 0, sizeof msg); msg[0] = cat; msg[1] = act; msg[2] = (uint64_t)(uintptr_t)payload;
     (void)b; ((void (*)(uint64_t, void *))*(uint64_t *)(*(uint64_t *)root + 0x28))(root, msg);
 }
-// 自动喝药：生命按两档（见下面 ap_life_pick：低于 50% 红药、低于 30% 紫药，没有紫药再喝一瓶红药），法力 < 上限 30% 喝蓝药（mp1–mp5）——先背包（页 0）、背包没有再腰带，城里也喝。
+// 自动喝药：生命按两档（见下面 ap_life_pick：低于 90% 红药、低于 30% 紫药，没有紫药再喝一瓶红药），法力严格低于同一个百分数（缺省 90%）喝蓝药（mp1–mp5）——先背包（页 0）、背包没有再腰带，城里也喝。
 // 生命 / 法力读游戏自己的取属性函数 main+0x5b9290(单位, 属性号, 0)（含装备 / 护身符加成，角色页同口径），6 / 7 生命、8 / 9 法力，定点 ×256。
 // 喝走 g_use 那条原版路径（腰带格分支 0x2cecf0 / 背包 0x3c0098，都自己组 0x26 包），不模拟点击。
 // 不连喝：以游戏自己的「药效还在」为准，药效没了才再判——
@@ -230,7 +230,7 @@ static void a_send(uint8_t *b, uint64_t root, uint64_t cat, uint64_t act, int32_
 //   状态位：[单位+0x88] 属性表（+0x1c 最高位 = 扩展表）+0xb30 起按 状态号 / 32 一个字的位图（游戏自己读法见 main+0x6240f4，置位见 0x5bd510）。
 // 发出喝药后等药效出现，1 秒（25 拍）没出现算这次没喝成，再按数值重判。两种同时低时先喝红。
 // 开关：「自定义」设置 auto_mana（dm_custom.c，键名沿用只管蓝药时的旧名，现管红蓝两种），缺省开
-// Auto potion: life uses two tiers (see ap_life_pick below: red potion below 50%, purple potion below 30%, one more red potion if there is no purple), mana < 30% of the maximum drinks a blue potion (mp1–mp5) -- inventory first (page 0), and the belt if the inventory has none; also drinks in town.
+// Auto potion: life uses two tiers (see ap_life_pick below: red potion below 90%, purple potion below 30%, one more red potion if there is no purple), mana strictly below the same percent (default 90%) drinks a blue potion (mp1–mp5) -- inventory first (page 0), and the belt if the inventory has none; also drinks in town.
 // Life / mana are read with the game's own stat getter function main+0x5b9290(unit, stat id, 0) (including equipment / charm bonuses, same definition as the character page), 6 / 7 life, 8 / 9 mana, fixed point ×256.
 // Drinking goes through the original g_use path (belt-cell branch 0x2cecf0 / inventory 0x3c0098, both build the 0x26 packet themselves), no click simulation.
 // No chain drinking: the game's own "potion effect still active" is authoritative, and it is judged again only after the effect is gone --
@@ -244,14 +244,28 @@ static int a_has_state(uint64_t u, int st) {
     uint64_t sl = *(uint64_t *)(u + 0x88); if (!sl || st < 0 || st > 0x1fe || !(*(uint32_t *)(sl + 0x1c) >> 31)) return 0;
     return (*(uint32_t *)(sl + 0xb30 + 4 * (uint64_t)(st >> 5)) >> (st & 31)) & 1;
 }
-// 生命两档（人物与佣兵同一套）：低于 50% 喝红药（药效在就不喝，不连灌）；低于 30% 喝紫药（瞬回，没有药效状态：喝完 1 秒仍低于 30% 才再喝），
+// 生命两档（人物与佣兵同一套）：低于 90% 喝红药（药效在就不喝，不连灌）；低于 30% 喝紫药（瞬回，没有药效状态：喝完 1 秒仍低于 30% 才再喝），
 // 没有紫药就再喝一瓶红药——这一瓶不受「药效还在」挡，但每次掉到 30% 以下只放行一瓶，之后回到「药效没了才喝」，回到 30% 以上重新计（挨打时不把红药灌光）。
-// 两个阈值可调：DM_AUTOPOT_RED（缺省 50）/ DM_AUTOPOT_REJUV（缺省 30），百分数。法力仍是低于 30% 喝蓝药。
-// The two life tiers (the same set for the character and the mercenary): below 50% drink a red potion (not while its effect is active, no chain drinking); below 30% drink a purple potion (instant, with no effect state: drink again only if still below 30% 1 second after drinking),
+// 生命和法力共用一个百分数：DM_AUTOPOT_PCT（缺省 90；没设时沿用旧名 DM_AUTOPOT_RED）。紫药仍是 DM_AUTOPOT_REJUV（缺省 30）。正好等于阈值不喝。每次现读环境变量，不缓存。
+// The two life tiers (the same set for the character and the mercenary): below 90% drink a red potion (not while its effect is active, no chain drinking); below 30% drink a purple potion (instant, with no effect state: drink again only if still below 30% 1 second after drinking),
 // and with no purple potion drink one more red potion -- this one is not blocked by "effect still active", but only one is let through per drop below 30%; after that it goes back to "drink only once the effect is gone", and the count restarts once life is back above 30% (so the red potions are not all poured down while taking hits).
-// Both thresholds are tunable: DM_AUTOPOT_RED (default 50) / DM_AUTOPOT_REJUV (default 30), in percent. Mana is still: below 30% drink a blue potion.
-static int ap_pct(int which) { static int v[2] = { -1, -1 }; static const char *const nm[2] = { "DM_AUTOPOT_RED", "DM_AUTOPOT_REJUV" }; static const int def[2] = { 50, 30 };
-    if (v[which] < 0) { const char *e = getenv(nm[which]); v[which] = e && atoi(e) > 0 && atoi(e) <= 100 ? atoi(e) : def[which]; } return v[which]; }
+// Life and mana share one percent: DM_AUTOPOT_PCT (default 90; the old name DM_AUTOPOT_RED is used when that is unset). Rejuvenation stays DM_AUTOPOT_REJUV (default 30). Exactly the threshold does not drink. The environment is read on each call and is not cached.
+static int ap_env_pct(const char *name, int def) { const char *e = getenv(name); if (!e || !e[0]) return def; int v = atoi(e); return v > 0 && v <= 100 ? v : def; }
+static int ap_pct(int which) {   // 0 = 生命和法力共用 | 0 = the percent shared by life and mana
+    if (which == 1) return ap_env_pct("DM_AUTOPOT_REJUV", 30);
+    const char *e = getenv("DM_AUTOPOT_PCT"); if (e && e[0]) return ap_env_pct("DM_AUTOPOT_PCT", 90);
+    return ap_env_pct("DM_AUTOPOT_RED", 90);
+}
+int dm_autopot_pct(void) { return ap_pct(0); }
+static int ap_below(int v, int mx, int pct) { return mx > 0 && v >= 0 && (long long)v * 100 < (long long)mx * pct; }   // 严格小于。正好 pct% 不喝 | Strictly below. Exactly pct% does not drink
+// which 0 生命 / 1 法力。返回 0 不喝、1 红药、2 蓝药、3 紫药。生命先看 30% 紫药，再看共用百分数的红药。法力只看共用百分数。
+// which 0 life / 1 mana. Returns 0 no drink, 1 healing, 2 mana, 3 rejuvenation. Life checks the 30% rejuvenation tier first, then a healing potion at the shared percent. Mana uses only the shared percent.
+int dm_autopot_select(int which, int v, int mx) {
+    if (which == 1) return ap_below(v, mx, ap_pct(0)) ? 2 : 0;
+    if (ap_below(v, mx, ap_pct(1))) return 3;
+    if (ap_below(v, mx, ap_pct(0))) return 1;
+    return 0;
+}
 // 在玩家物品栏里找一瓶药：kind 0 红（hp1–hp5）/ 1 蓝（mp1–mp5）/ 2 紫（rvs / rvl）。先背包（页 0）、再腰带最下面一排（原版按腰带键喝的就是这一排）。返回物品 id，没有 = 0
 // Find a potion among the player's items: kind 0 red (hp1–hp5) / 1 blue (mp1–mp5) / 2 purple (rvs / rvl). Inventory first (page 0), then the bottom row of the belt (the row the original game drinks from when a belt key is pressed). Returns the item id, none = 0
 static uint32_t ap_find(uint8_t *b, uint64_t pl, int kind, uint32_t *ocode, int *in_bag) {
@@ -269,15 +283,15 @@ typedef struct { uint32_t last; int warned, extra; } ap_life;   // last：上次
 // Pick a potion by the two life tiers. v / mx are life and its maximum, healing = the red potion effect is still active. Returns the id of the item to use (0 = no drink on this tick); *why is for the log
 static uint32_t ap_life_pick(uint8_t *b, uint64_t pl, ap_life *s, int v, int mx, int healing, uint32_t t, uint32_t *code, int *in_bag, const char **why) {
     if (mx <= 0 || v <= 0) return 0;
-    int low = (long long)v * 100 < (long long)mx * ap_pct(1), mid = (long long)v * 100 < (long long)mx * ap_pct(0);
+    int sel = dm_autopot_select(0, v, mx), low = sel == 3;   // 0 不喝、1 红药、3 紫药。和法力共用 dm_autopot_select 这一个百分数 | 0 no drink, 1 healing, 3 rejuvenation. Shares the one percent in dm_autopot_select with mana
     if (!low) s->extra = 0;
-    if (!mid) { s->warned = 0; if (healing) s->last = 0; return 0; }
+    if (!sel) { s->warned = 0; if (healing) s->last = 0; return 0; }
     if (s->last && t >= s->last && t - s->last < 25) return 0;   // 刚发过一瓶：等 1 秒（红药等药效出现、紫药等生命跳上去） | one was just sent: wait 1 second (for a red potion, until the effect appears; for a purple potion, until life jumps up)
     if (low) { uint32_t id = ap_find(b, pl, 2, code, in_bag); if (id) { *why = "紫药"; return id; }
         if (healing && s->extra) return 0;   // 没有紫药、那一瓶额外的红已经喝过：等药效没了 | no purple potion and the one extra red has already been drunk: wait for the potion effect to end
         id = ap_find(b, pl, 0, code, in_bag); if (id) { if (healing) s->extra = 1; *why = healing ? "没有紫药，再喝一瓶红药" : "没有紫药，喝红药"; return id; }
         if (!s->warned) { s->warned = 1; *why = "没药"; } return 0; }
-    if (healing) return 0;   // 50% 档：药效还在不再喝 | 50% tier: do not drink again while the potion effect is still active
+    if (healing) return 0;   // 生命档：药效还在不再喝 | life tier: do not drink again while the potion effect is still active
     { uint32_t id = ap_find(b, pl, 0, code, in_bag); if (id) { *why = "红药"; return id; } if (!s->warned) { s->warned = 1; *why = "没药"; } return 0; }
 }
 static int auto_pot_life(uint8_t *b, uint64_t pl, uint32_t t) {   // 人物生命；返回 1 = 这一拍发了喝药 | character life; returns 1 = a drink was sent on this tick
@@ -288,16 +302,16 @@ static int auto_pot_life(uint8_t *b, uint64_t pl, uint32_t t) {   // 人物生�
     LOG("自动喝药：拍 %u 生命 %d/%d（%d%%）→ %s：喝%s的 %.3s（id %u）", t, v, mx, (int)((long long)v * 100 / mx), why, bag ? "背包" : "腰带", (const char *)&code, id);
     return 1;
 }
-static int auto_pot_mana(uint8_t *b, uint64_t pl, uint32_t t) {   // 法力：低于 30% 喝蓝药，药效（属性 26）在就不喝；返回 1 = 这一拍发了喝药 | mana: below 30% drink a blue potion, not while the potion effect (stat 26) is present; returns 1 = a drink was sent on this tick
+static int auto_pot_mana(uint8_t *b, uint64_t pl, uint32_t t) {   // 法力：严格低于和生命同一个百分数（缺省 90%）喝蓝药，药效（属性 26）在就不喝；返回 1 = 这一拍发了喝药 | mana: strictly below the same percent as life (default 90%) drinks a blue potion, not while the potion effect (stat 26) is present; returns 1 = a drink was sent on this tick
     static uint32_t last; static int warned; int (*gs)(uint64_t, int, int) = (void *)(b + 0x5b9290);
     if (gs(pl, 26, 0)) { last = 0; return 0; }
     if (last && t >= last && t - last < 25) return 0;
     int v = gs(pl, 8, 0) >> 8, mx = gs(pl, 9, 0) >> 8, bag = 0; uint32_t code = 0;
-    if (mx <= 0 || v * 10 >= mx * 3) { warned = 0; return 0; }
+    if (dm_autopot_select(1, v, mx) != 2) { warned = 0; return 0; }
     uint32_t id = ap_find(b, pl, 1, &code, &bag);
-    if (!id) { if (!warned) { warned = 1; LOG("自动喝药：法力 %d/%d 低于 30%%，背包和腰带里都没有法力药水", v, mx); } return 0; }
+    if (!id) { if (!warned) { warned = 1; LOG("自动喝药：法力 %d/%d 低于 %d%%，背包和腰带里都没有法力药水", v, mx, ap_pct(0)); } return 0; }
     atomic_store(&g_use, id); last = t; warned = 0;
-    LOG("自动喝药：拍 %u 法力 %d/%d 低于 30%% → 喝%s的 %.3s（id %u）", t, v, mx, bag ? "背包" : "腰带", (const char *)&code, id);
+    LOG("自动喝药：拍 %u 法力 %d/%d 低于 %d%% → 喝%s的 %.3s（id %u）", t, v, mx, ap_pct(0), bag ? "背包" : "腰带", (const char *)&code, id);
     return 1;
 }
 // 佣兵自动喂药：同上面的生命两档；玩家自己生命低于 30% 那一档时先不喂（药先紧着玩家）。
